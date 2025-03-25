@@ -38,74 +38,90 @@ const DEFAULT_HEADERS_LIST = [
   'References'
 ]
 
-const logJson = (type, message, data = null) => {
-  const log = { timestamp: new Date().toISOString(), type, message }
+type LogLevel = 'info' | 'debug' | 'trace' | 'error'
+
+type Log = {
+  timestamp: string
+  level: LogLevel
+  message: string
+  data?: any
+}
+
+type OAuthKeys = {
+  installed: {
+    client_id: string
+    client_secret: string
+    redirect_uris: string[]
+  }
+}
+
+const logger = (level: LogLevel, message: string, data?: any) => {
+  const log: Log = { timestamp: new Date().toISOString(), level, message }
   if (data) log.data = data
 
   try {
     fs.appendFileSync(LOG_PATH, JSON.stringify(log) + '\n')
-  } catch (error) {
-    console.error('Error writing to log file:', error.message)
+  } catch (error: any) {
+    console.error('Error writing to log file:', { error: error.message })
   }
 }
 
-const logJsonAndThrow = (message, data = null) => {
-  logJson('error', message, data)
+const throwError = (message: string, data?: any) => {
+  logger('error', message, data)
   throw new Error(message)
 }
 
 const createOAuth2Client = () => {
-  logJson('info', 'Starting OAuth2Client creation')
-  
-  let keys = null
+  logger('info', 'Starting OAuth2Client creation')
 
   if (!fs.existsSync(GMAIL_OAUTH_PATH)) {
-    logJsonAndThrow(`OAuth2 keys file not found`, { path: GMAIL_OAUTH_PATH })
+    throwError(`OAuth2 keys file not found at ${GMAIL_OAUTH_PATH}`)
   }
+
+  let parsedKeys: any
 
   try {
     const keysContent = fs.readFileSync(GMAIL_OAUTH_PATH, 'utf8')
-    const parsedKeys = JSON.parse(keysContent)
-    keys = parsedKeys.installed
-  } catch (error) {
-    logJsonAndThrow(`Failed to read OAuth keys: ${error.message}`)
+    parsedKeys = JSON.parse(keysContent)
+  } catch (error: any) {
+    throwError('Failed to read OAuth keys', { error: error.message })
   }
 
-  if (!keys || !keys.client_id || !keys.client_secret) {
-    logJsonAndThrow(`Invalid OAuth keys format`, keys)
+  if (!parsedKeys?.installed.client_id || !parsedKeys.installed.client_secret) {
+    throwError('Invalid OAuth keys format', parsedKeys)
   }
 
-  logJson('info', 'Creating OAuth2Client with credentials')
+  const keys: OAuthKeys = parsedKeys
+
+  logger('info', 'Creating OAuth2Client with credentials')
 
   const oauth2Client = new OAuth2Client({
-    clientId: keys.client_id,
-    clientSecret: keys.client_secret,
+    clientId: keys.installed.client_id,
+    clientSecret: keys.installed.client_secret,
     redirectUri: 'http://localhost:3000/oauth2callback'
   })
 
   if (fs.existsSync(GMAIL_CREDENTIALS_PATH)) {
-    logJson('info', 'Found existing credentials file', { path: GMAIL_CREDENTIALS_PATH })
+    logger('info', `Found existing credentials file at ${GMAIL_CREDENTIALS_PATH}`)
     try {
       const credentials = JSON.parse(fs.readFileSync(GMAIL_CREDENTIALS_PATH, 'utf8'))
       oauth2Client.setCredentials(credentials)
-      logJson('info', 'Successfully loaded existing credentials')
-    } catch (error) {
-      // Don't throw here, just continue without credentials
-      logJson('error', 'Failed to read or parse credentials file', { error: error.message })
+      logger('info', 'Successfully loaded existing credentials')
+    } catch (error: any) {
+      logger('error', 'Failed to read or parse credentials file', { error: error.message })
     }
   } else {
-    logJson('info', 'No existing credentials file found', { path: GMAIL_CREDENTIALS_PATH })
+    logger('info', `No existing credentials file found at ${GMAIL_CREDENTIALS_PATH}`)
   }
 
   return oauth2Client
 }
 
-const authenticate = async () => {
-  const oauth2Client = createOAuth2Client()
+const authenticate = async (inAuthFlow: boolean, oauth2Client: OAuth2Client) => {
   const credentials = oauth2Client.credentials
 
   if (credentials && credentials.access_token) {
-    logJson('info', 'Valid credentials found, skipping authentication flow')
+    logger('info', 'Valid credentials found, skipping authentication flow')
     return
   }
 
@@ -113,12 +129,10 @@ const authenticate = async () => {
     const server = http.createServer()
     server.listen(3000)
 
-    const authUrl = oauth2Client.generateAuthUrl({
-      access_type: 'offline',
-      scope: AUTH_SCOPES
-    })
+    const authUrl = oauth2Client.generateAuthUrl({ access_type: 'offline', scope: AUTH_SCOPES })
 
-    console.log('Please visit this URL to authenticate:', authUrl)
+    logger('info', `Please visit this URL to authenticate: ${authUrl}`)
+
     open(authUrl)
 
     server.on('request', async (req, res) => {
@@ -142,8 +156,8 @@ const authenticate = async () => {
         res.writeHead(200)
         res.end('Authentication successful! You can close this window.')
         server.close()
-        resolve()
-      } catch (error) {
+        resolve(void 0)
+      } catch (error: any) {
         res.writeHead(500)
         res.end('Authentication failed')
         reject(error)
@@ -153,22 +167,20 @@ const authenticate = async () => {
 }
 
 const oauth2Client = createOAuth2Client()
-await authenticate(oauth2Client)
-
-if (process.argv[2] === 'auth') process.exit(0)
+await authenticate(process.argv[2] === 'auth', oauth2Client)
 
 const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
 
 const ensureValidCredentials = async () => {
-  if (!oauth2Client) logJsonAndThrow('OAuth2 client not initialized. Please check your credentials.')
+  if (!oauth2Client) throwError('OAuth2 client not initialized. Please check your credentials.')
 
   const credentials = oauth2Client.credentials
   if (!credentials || !credentials.access_token) {
-    logJson('info', 'No credentials found, starting authentication flow')
+    logger('info', 'No credentials found, starting authentication flow')
     try {
       await authenticate(oauth2Client)
-      logJson('info', 'Authentication completed successfully')
-    } catch (error) { logJsonAndThrow(`Authentication failed, you may need to run "npx @shinzolabs/gmail-mcp auth" to authenticate: ${error.message}`) }
+      logger('info', 'Authentication completed successfully')
+    } catch (error) { throwError(`Authentication failed, you may need to run "npx @shinzolabs/gmail-mcp auth" to authenticate: ${error.message}`) }
   }
 
   try {
@@ -177,21 +189,21 @@ const ensureValidCredentials = async () => {
     const isExpired = expiryDate ? expiryDate <= currentTime : true
 
     if (!isExpired) {
-      logJson('info', 'Credentials are still valid')
+      logger('info', 'Credentials are still valid')
       return
     }
-    if (!credentials.refresh_token) logJsonAndThrow('No refresh token found, please re-authenticate')
+    if (!credentials.refresh_token) throwError('No refresh token found, please re-authenticate')
 
     const timeUntilExpiry = expiryDate ? (expiryDate - currentTime) : 0
-    logJson('info', `Access token is ${isExpired ? 'expired' : 'expiring in ' + timeUntilExpiry + ' seconds'}, refreshing token`)
+    logger('info', `Access token is ${isExpired ? 'expired' : 'expiring in ' + timeUntilExpiry + ' seconds'}, refreshing token`)
 
     const { credentials: newCredentials } = await oauth2Client.refreshToken(credentials.refresh_token)
     const mergedCredentials = { ...newCredentials, refresh_token: credentials.refresh_token }
     oauth2Client.setCredentials(mergedCredentials)
     
     fs.writeFileSync(GMAIL_CREDENTIALS_PATH, JSON.stringify(mergedCredentials, null, 2))
-    logJson('info', 'Successfully refreshed and saved new credentials')
-  } catch (error) { logJsonAndThrow(`Error validating credentials: ${error.message}`) }
+    logger('info', 'Successfully refreshed and saved new credentials')
+  } catch (error) { throwError(`Error validating credentials: ${error.message}`) }
 }
 
 const formatResponse = (messageOrData, status = 200) => ({
@@ -201,10 +213,10 @@ const formatResponse = (messageOrData, status = 200) => ({
 })
 
 const callEndpoint = async (endpoint, params = {}, method = 'GET', body = null) => {
-  logJson('info', 'Starting API request', { endpoint, params })
+  logger('info', 'Starting API request', { endpoint, params })
   
   await ensureValidCredentials()
-  logJson('info', 'Credentials validated')
+  logger('info', 'Credentials validated')
 
   const parts = endpoint.split('/')
   let resource = parts[3]
@@ -263,38 +275,38 @@ const callEndpoint = async (endpoint, params = {}, method = 'GET', body = null) 
   if (body) Object.assign(requestParams, body)
 
   try {
-    logJson('info', 'Making API call', { resource, resourceMethod, params: requestParams })
+    logger('info', 'Making API call', { resource, resourceMethod, params: requestParams })
     
     if (!gmail.users[resource]) {
-      logJsonAndThrow(`Invalid API resource: users.${resource}`)
+      throwError(`Invalid API resource: users.${resource}`)
     }
 
     if (!gmail.users[resource][resourceMethod]) {
-      logJsonAndThrow(`Invalid API method: users.${resource}.${resourceMethod}`)
+      throwError(`Invalid API method: users.${resource}.${resourceMethod}`)
     }
 
     const response = await gmail.users[resource][resourceMethod](requestParams)
-    logJson('info', 'API call successful')
+    logger('info', 'API call successful')
     return response.data
   } catch (error) {
-    logJsonAndThrow(`API request failed: ${error.message}`)
+    throwError(`API request failed: ${error.message}`)
   }
 }
 
 const handleEndpoint = async (apiCall) => {
-  logJson('info', 'Starting endpoint handler')
+  logger('info', 'Starting endpoint handler')
   try {
     const result = await apiCall()
-    logJson('info', 'Endpoint handler completed successfully')
+    logger('info', 'Endpoint handler completed successfully')
     return result
-  } catch (error) { logJsonAndThrow(`Endpoint handler failed: ${error.message}\n${error.stack}`) }
+  } catch (error) { throwError(`Endpoint handler failed: ${error.message}\n${error.stack}`) }
 }
 
 const decodeBodyContent = (body, path) => {
   if (!body?.data) return null
 
   const decodedData = Buffer.from(body.data, 'base64').toString('utf-8')
-  logJson('debug', 'Extracted plain text content', { path, originalSize: body.data.length, decodedSize: decodedData.length })
+  logger('debug', 'Extracted plain text content', { path, originalSize: body.data.length, decodedSize: decodedData.length })
   return {
     attachmentId: body.attachmentId,
     data: decodedData,
@@ -380,75 +392,6 @@ const getQuotedContent = (threadData) => {
 }
 
 const getThreadHeaders = (threadData) => {
-  /*
-  threadData:
-{
-  "id": "195ce2791dd660b1",
-  "historyId": "132186",
-  "messages": [
-    {
-      "id": "195ce2791dd660b1",
-      "threadId": "195ce2791dd660b1",
-      "labelIds": [
-        "IMPORTANT",
-        "CATEGORY_PERSONAL",
-        "INBOX"
-      ],
-      "snippet": "Let&#39;s play a game of tic-tac-toe! I&#39;ll start: | | | | | | x | | | | | | -- Austin Born",
-      "payload": {
-        "partId": "",
-        "mimeType": "multipart/alternative",
-        "filename": "",
-        "headers": [
-          {
-            "name": "From",
-            "value": "Austin Born <austinborn212@gmail.com>"
-          },
-          {
-            "name": "Date",
-            "value": "Tue, 25 Mar 2025 09:34:02 -0700"
-          },
-          {
-            "name": "Message-ID",
-            "value": "<CAFeV7a-X=odB8G16p-yPxpitJcD-rum61ghB4fQFUz3tFA8+6g@mail.gmail.com>"
-          },
-          {
-            "name": "Subject",
-            "value": "Hey Hey"
-          },
-          {
-            "name": "To",
-            "value": "austin@shinzolabs.com"
-          }
-        ],
-        "body": null,
-        "parts": [
-          {
-            "partId": "0",
-            "mimeType": "text/plain",
-            "filename": "",
-            "headers": [],
-            "body": {
-              "data": "Let's play a game of tic-tac-toe! I'll start:\r\n\r\n|   |   |   |\r\n|   | x |   |\r\n|   |   |   |\r\n\r\n-- \r\nAustin Born\r\n",
-              "originalSize": 152,
-              "decodedSize": 114
-            }
-          },
-          {
-            "partId": "1",
-            "mimeType": "text/html",
-            "filename": "",
-            "headers": [],
-            "body": null
-          }
-        ]
-      },
-      "sizeEstimate": 6461,
-      "historyId": "132186",
-      "internalDate": "1742920442000"
-    }
-  ]
-}  */
   let headers = []
   if (!threadData?.messages?.length) return headers
 
@@ -484,7 +427,7 @@ const getThreadHeaders = (threadData) => {
 }
 
 const constructRawEmailMessage = async (params) => {
-  logJson('debug', 'Constructing raw email message', { params })
+  logger('debug', 'Constructing raw email message', { params })
 
   let threadData = null
   if (params.threadId) {
@@ -510,7 +453,7 @@ const constructRawEmailMessage = async (params) => {
 
   message.push(getQuotedContent(threadData))
 
-  logJson('debug', 'Constructed raw email message', { message })
+  logger('debug', 'Constructed raw email message', { message })
 
   return Buffer.from(message.join('\r\n')).toString('base64url')
 }

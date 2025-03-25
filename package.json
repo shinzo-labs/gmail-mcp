@@ -3,13 +3,14 @@
   "version": "1.0.0",
   "description": "Gmail MCP - Provides Gmail API access with file-based OAuth2 authentication",
   "type": "module",
-  "main": "index.js",
+  "main": "dist/index.js",
   "bin": {
-    "gmail-mcp": "./index.js"
+    "gmail-mcp": "./dist/index.js"
   },
   "scripts": {
-    "start": "node index.js",
-    "auth": "node index.js auth"
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "auth": "node dist/index.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -17,6 +18,10 @@
     "google-auth-library": "^9.6.3",
     "open": "^9.1.0",
     "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "typescript": "^5.3.3"
   },
   "keywords": [
     "gmail",
