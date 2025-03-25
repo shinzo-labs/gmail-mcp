@@ -176,7 +176,10 @@ const ensureValidCredentials = async () => {
     const currentTime = Date.now()
     const isExpired = expiryDate ? expiryDate <= currentTime : true
 
-    if (!isExpired) { logJson('info', 'Credentials are still valid'); return }
+    if (!isExpired) {
+      logJson('info', 'Credentials are still valid')
+      return
+    }
     if (!credentials.refresh_token) logJsonAndThrow('No refresh token found, please re-authenticate')
 
     const timeUntilExpiry = expiryDate ? (expiryDate - currentTime) : 0
@@ -284,14 +287,14 @@ const handleEndpoint = async (apiCall) => {
     const result = await apiCall()
     logJson('info', 'Endpoint handler completed successfully')
     return result
-  } catch (error) { logJsonAndThrow(`Endpoint handler failed: ${error.message}`) }
+  } catch (error) { logJsonAndThrow(`Endpoint handler failed: ${error.message}\n${error.stack}`) }
 }
 
 const decodeBodyContent = (body, path) => {
   if (!body?.data) return null
 
   const decodedData = Buffer.from(body.data, 'base64').toString('utf-8')
-  logJson('debug', 'Extracted plain text content', { path, originalSize: body.data.length, decodedSize: decodedData.length });
+  logJson('debug', 'Extracted plain text content', { path, originalSize: body.data.length, decodedSize: decodedData.length })
   return {
     attachmentId: body.attachmentId,
     data: decodedData,
@@ -324,46 +327,225 @@ const processMessage = (messagePart, path, headersList = DEFAULT_HEADERS_LIST, i
   }
 }
 
+const extractMessageContent = (messagePart, level = 1) => {
+  if (!messagePart) return ''
+  
+  if (messagePart.mimeType === 'text/plain' && messagePart.body?.data) {
+    const decoded = Buffer.from(messagePart.body.data, 'base64').toString('utf-8')
+    const prefix = '>' + ' '.repeat(level)
+    return decoded.split('\n')
+      .map(line => prefix + (line.startsWith('>') ? '' : ' ') + line)
+      .join('\n')
+  }
+  
+  if (messagePart.parts) {
+    return messagePart.parts
+      .map(p => extractMessageContent(p, level + 1))
+      .filter(Boolean)
+      .join('\n')
+  }
+  
+  return '';
+}
+
+const getHeaderValue = (headers, name) => {
+  if (!headers || !Array.isArray(headers) || !name) return null;
+  return headers.find(h => h?.name?.toLowerCase() === name.toLowerCase())?.value
+}
+
+const getQuotedContent = (threadData) => {
+  if (!threadData?.messages?.length) return ''
+
+  const lastMessage = threadData.messages[threadData.messages.length - 1]
+  if (!lastMessage?.payload) return ''
+
+  const fromHeader = getHeaderValue(lastMessage.payload.headers, 'from')
+  const dateHeader = getHeaderValue(lastMessage.payload.headers, 'date')
+
+  let quotedContent = []
+  
+  if (fromHeader && dateHeader) {
+    quotedContent.push('')
+    quotedContent.push(`On ${dateHeader} ${fromHeader} wrote:`)
+    quotedContent.push('')
+  }
+
+  const nestedHistory = extractMessageContent(lastMessage.payload, 1)
+  if (nestedHistory) {
+    quotedContent.push(nestedHistory)
+    quotedContent.push('') // Add extra newline for spacing between quotes
+  }
+
+  return quotedContent.join('\n')
+}
+
+const getThreadHeaders = (threadData) => {
+  /*
+  threadData:
+{
+  "id": "195ce2791dd660b1",
+  "historyId": "132186",
+  "messages": [
+    {
+      "id": "195ce2791dd660b1",
+      "threadId": "195ce2791dd660b1",
+      "labelIds": [
+        "IMPORTANT",
+        "CATEGORY_PERSONAL",
+        "INBOX"
+      ],
+      "snippet": "Let&#39;s play a game of tic-tac-toe! I&#39;ll start: | | | | | | x | | | | | | -- Austin Born",
+      "payload": {
+        "partId": "",
+        "mimeType": "multipart/alternative",
+        "filename": "",
+        "headers": [
+          {
+            "name": "From",
+            "value": "Austin Born <austinborn212@gmail.com>"
+          },
+          {
+            "name": "Date",
+            "value": "Tue, 25 Mar 2025 09:34:02 -0700"
+          },
+          {
+            "name": "Message-ID",
+            "value": "<CAFeV7a-X=odB8G16p-yPxpitJcD-rum61ghB4fQFUz3tFA8+6g@mail.gmail.com>"
+          },
+          {
+            "name": "Subject",
+            "value": "Hey Hey"
+          },
+          {
+            "name": "To",
+            "value": "austin@shinzolabs.com"
+          }
+        ],
+        "body": null,
+        "parts": [
+          {
+            "partId": "0",
+            "mimeType": "text/plain",
+            "filename": "",
+            "headers": [],
+            "body": {
+              "data": "Let's play a game of tic-tac-toe! I'll start:\r\n\r\n|   |   |   |\r\n|   | x |   |\r\n|   |   |   |\r\n\r\n-- \r\nAustin Born\r\n",
+              "originalSize": 152,
+              "decodedSize": 114
+            }
+          },
+          {
+            "partId": "1",
+            "mimeType": "text/html",
+            "filename": "",
+            "headers": [],
+            "body": null
+          }
+        ]
+      },
+      "sizeEstimate": 6461,
+      "historyId": "132186",
+      "internalDate": "1742920442000"
+    }
+  ]
+}  */
+  let headers = []
+  if (!threadData?.messages?.length) return headers
+
+  const lastMessage = threadData.messages[threadData.messages.length - 1]
+  const references = []
+  
+  // Handle subject
+  let subjectHeader = getHeaderValue(lastMessage.payload.headers, 'subject')
+  if (subjectHeader) {
+    if (!subjectHeader.toLowerCase().startsWith('re:')) {
+      subjectHeader = `Re: ${subjectHeader}`
+    }
+    headers.push(`Subject: ${subjectHeader}`)
+  }
+
+  // Add threading headers
+  const messageIdHeader = getHeaderValue(lastMessage.payload.headers, 'message-id')
+  if (messageIdHeader) {
+    headers.push(`In-Reply-To: ${messageIdHeader}`)
+    references.push(messageIdHeader)
+  }
+
+  const referencesHeader = getHeaderValue(lastMessage.payload.headers, 'references')
+  if (referencesHeader) {
+    references.unshift(...referencesHeader.split(' '))
+  }
+
+  if (references.length > 0) {
+    headers.push(`References: ${references.join(' ')}`)
+  }
+
+  return headers
+}
+
+const constructRawEmailMessage = async (params) => {
+  logJson('debug', 'Constructing raw email message', { params })
+
+  let threadData = null
+  if (params.threadId) {
+    threadData = await callEndpoint(
+      `/users/me/threads/${params.threadId}`,
+      { format: 'full' }
+    )
+  }
+
+  const message = []
+  
+  if (params.to) message.push(`To: ${params.to}`)
+  if (params.cc) message.push(`Cc: ${params.cc}`)
+  if (params.bcc) message.push(`Bcc: ${params.bcc}`)
+
+  message.push(...getThreadHeaders(threadData))
+
+  message.push('Content-Type: text/plain charset="UTF-8"')
+  message.push('MIME-Version: 1.0')
+  message.push('')
+
+  message.push(params.body || '')
+
+  message.push(getQuotedContent(threadData))
+
+  logJson('debug', 'Constructed raw email message', { message })
+
+  return Buffer.from(message.join('\r\n')).toString('base64url')
+}
+
 server.tool("create_draft",
   "Create a draft email in Gmail",
   {
-    message: z.object({
-      raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format"),
-      threadId: z.string().optional().describe("The thread ID of the message"),
-      labelIds: z.array(z.string()).optional().describe("List of label IDs to apply to the message"),
-      to: z.array(z.string()).optional().describe("Recipients in the To field"),
-      cc: z.array(z.string()).optional().describe("Recipients in the CC field"),
-      bcc: z.array(z.string()).optional().describe("Recipients in the BCC field"),
-      subject: z.string().optional().describe("Subject of the email"),
-      body: z.string().optional().describe("Body content of the email"),
-      attachments: z.array(z.object({
-        filename: z.string().describe("Name of the attachment"),
-        data: z.string().describe("Base64 encoded attachment data"),
-        mimeType: z.string().describe("MIME type of the attachment")
-      })).optional().describe("File attachments")
-    }).describe("The message to be created as a draft"),
+    raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format"),
+    threadId: z.string().optional().describe("The thread ID to associate this draft with"),
+    to: z.string().optional().describe("The recipient's email address"),
+    cc: z.string().optional().describe("The CC recipient's email address"),
+    bcc: z.string().optional().describe("The BCC recipient's email address"),
+    subject: z.string().optional().describe("The subject of the email"),
+    body: z.string().optional().describe("The body of the email"),
+    attachments: z.array(z.object({
+      filename: z.string(),
+      data: z.string(),
+      mimeType: z.string()
+    })).optional().describe("Array of attachments"),
     headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
     includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
     return handleEndpoint(async () => {
-      const message = {
-        raw: params.message.raw || Buffer.from(
-          `${params.message.to ? `To: ${params.message.to.join(', ')}\n` : ''}` +
-          `${params.message.cc ? `Cc: ${params.message.cc.join(', ')}\n` : ''}` +
-          `${params.message.bcc ? `Bcc: ${params.message.bcc.join(', ')}\n` : ''}` +
-          `${params.message.subject ? `Subject: ${params.message.subject}\n` : ''}` +
-          `\n${params.message.body || ''}`
-        ).toString('base64url'),
-        threadId: params.message.threadId,
-        labelIds: params.message.labelIds
-      }
+      let raw = params.raw
+      if (!raw) raw = await constructRawEmailMessage(params)
+
+      const requestBody = { message: { raw } }
+      if (params.threadId) requestBody.message.threadId = params.threadId
 
       const data = await callEndpoint(
         '/users/me/drafts',
         {},
         'POST',
-        { message }
+        { requestBody }
       )
 
       if (data.message?.payload) {
@@ -383,43 +565,34 @@ server.tool("create_draft",
 server.tool("send_message",
   "Send an email message to specified recipients",
   {
-    message: z.object({
-      raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format"),
-      threadId: z.string().optional().describe("The thread ID of the message"),
-      labelIds: z.array(z.string()).optional().describe("List of label IDs to apply to the message"),
-      to: z.array(z.string()).optional().describe("Recipients in the To field"),
-      cc: z.array(z.string()).optional().describe("Recipients in the CC field"),
-      bcc: z.array(z.string()).optional().describe("Recipients in the BCC field"),
-      subject: z.string().optional().describe("Subject of the email"),
-      body: z.string().optional().describe("Body content of the email"),
-      attachments: z.array(z.object({
-        filename: z.string().describe("Name of the attachment"),
-        data: z.string().describe("Base64 encoded attachment data"),
-        mimeType: z.string().describe("MIME type of the attachment")
-      })).optional().describe("File attachments")
-    }).describe("The message to be sent"),
+    raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format"),
+    threadId: z.string().optional().describe("The thread ID to associate this message with"),
+    to: z.string().optional().describe("The recipient's email address"),
+    cc: z.string().optional().describe("The CC recipient's email address"),
+    bcc: z.string().optional().describe("The BCC recipient's email address"),
+    subject: z.string().optional().describe("The subject of the email"),
+    body: z.string().optional().describe("The body of the email"),
+    attachments: z.array(z.object({
+      filename: z.string(),
+      data: z.string(),
+      mimeType: z.string()
+    })).optional().describe("Array of attachments"),
     headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
     includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
     return handleEndpoint(async () => {
-      const message = {
-        raw: params.message.raw || Buffer.from(
-          `${params.message.to ? `To: ${params.message.to.join(', ')}\n` : ''}` +
-          `${params.message.cc ? `Cc: ${params.message.cc.join(', ')}\n` : ''}` +
-          `${params.message.bcc ? `Bcc: ${params.message.bcc.join(', ')}\n` : ''}` +
-          `${params.message.subject ? `Subject: ${params.message.subject}\n` : ''}` +
-          `\n${params.message.body || ''}`
-        ).toString('base64url'),
-        threadId: params.message.threadId,
-        labelIds: params.message.labelIds
-      }
+      let raw = params.raw
+      if (!raw) raw = await constructRawEmailMessage(params)
+
+      const requestBody = { raw }
+      if (params.threadId) requestBody.threadId = params.threadId
 
       const data = await callEndpoint(
         '/users/me/messages/send',
         {},
         'POST',
-        { message }
+        { requestBody }
       )
 
       if (data.payload) {
@@ -932,43 +1105,34 @@ server.tool("update_draft",
   "Replace a draft's content",
   {
     id: z.string().describe("The ID of the draft to update"),
-    message: z.object({
-      raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format"),
-      threadId: z.string().optional().describe("The thread ID of the message"),
-      labelIds: z.array(z.string()).optional().describe("List of label IDs to apply to the message"),
-      to: z.array(z.string()).optional().describe("Recipients in the To field"),
-      cc: z.array(z.string()).optional().describe("Recipients in the CC field"),
-      bcc: z.array(z.string()).optional().describe("Recipients in the BCC field"),
-      subject: z.string().optional().describe("Subject of the email"),
-      body: z.string().optional().describe("Body content of the email"),
-      attachments: z.array(z.object({
-        filename: z.string().describe("Name of the attachment"),
-        data: z.string().describe("Base64 encoded attachment data"),
-        mimeType: z.string().describe("MIME type of the attachment")
-      })).optional().describe("File attachments")
-    }).describe("The updated message content"),
+    raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format"),
+    threadId: z.string().optional().describe("The thread ID to associate this draft with"),
+    to: z.string().optional().describe("The recipient's email address"),
+    cc: z.string().optional().describe("The CC recipient's email address"),
+    bcc: z.string().optional().describe("The BCC recipient's email address"),
+    subject: z.string().optional().describe("The subject of the email"),
+    body: z.string().optional().describe("The body of the email"),
+    attachments: z.array(z.object({
+      filename: z.string(),
+      data: z.string(),
+      mimeType: z.string()
+    })).optional().describe("Array of attachments"),
     headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
     includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
     return handleEndpoint(async () => {
-      const message = {
-        raw: params.message.raw || Buffer.from(
-          `${params.message.to ? `To: ${params.message.to.join(', ')}\n` : ''}` +
-          `${params.message.cc ? `Cc: ${params.message.cc.join(', ')}\n` : ''}` +
-          `${params.message.bcc ? `Bcc: ${params.message.bcc.join(', ')}\n` : ''}` +
-          `${params.message.subject ? `Subject: ${params.message.subject}\n` : ''}` +
-          `\n${params.message.body || ''}`
-        ).toString('base64url'),
-        threadId: params.message.threadId,
-        labelIds: params.message.labelIds
-      }
+      let raw = params.raw
+      if (!raw) raw = await constructRawEmailMessage(params)
+
+      const requestBody = { message: { raw } }
+      if (params.threadId) requestBody.message.threadId = params.threadId
 
       const data = await callEndpoint(
         `/users/me/drafts/${params.id}`,
         {},
         'PUT',
-        { message }
+        { requestBody }
       )
 
       if (data.message?.payload) {
@@ -1013,7 +1177,7 @@ server.tool("send_draft",
         '/users/me/drafts/send',
         {},
         'POST',
-        { id: params.id }
+        { id: params.id } // TODO fix this
       )
       return formatResponse(data)
     })
