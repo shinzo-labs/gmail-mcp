@@ -28,6 +28,15 @@ const AUTH_SCOPES = [
   'https://www.googleapis.com/auth/gmail.settings.basic',
   'https://www.googleapis.com/auth/gmail.settings.sharing'
 ]
+const DEFAULT_HEADERS_LIST = [
+  'Date',
+  'From',
+  'To',
+  'Subject',
+  'Message-ID',
+  'In-Reply-To',
+  'References'
+]
 
 const logJson = (type, message, data = null) => {
   const log = { timestamp: new Date().toISOString(), type, message }
@@ -278,86 +287,41 @@ const handleEndpoint = async (apiCall) => {
   } catch (error) { logJsonAndThrow(`Endpoint handler failed: ${error.message}`) }
 }
 
-// Helper function to extract email content from message parts
-const extractEmailContent = (part, path = '', options = { includeHeaders: false, includeBodyHtml: false }) => {
-  let text = '', html = '', headers = []
+const decodeBodyContent = (body, path) => {
+  if (!body?.data) return null
 
-  if (!part) {
-    logJson('debug', 'No part provided to extractEmailContent', { path })
-    return { text, html, headers }
+  const decodedData = Buffer.from(body.data, 'base64').toString('utf-8')
+  logJson('debug', 'Extracted plain text content', { path, originalSize: body.data.length, decodedSize: decodedData.length });
+  return {
+    attachmentId: body.attachmentId,
+    data: decodedData,
+    originalSize: body.data.length,
+    decodedSize: decodedData.length
   }
-
-  if (part.mimeType === 'text/plain' && part.body?.data) {
-    text = Buffer.from(part.body.data, 'base64').toString('utf-8')
-    logJson('debug', 'Extracted plain text content', { path, originalSize: part.body.data.length, decodedSize: text.length })
-  } else if (part.mimeType === 'text/html' && part.body?.data) {
-    html = Buffer.from(part.body.data, 'base64').toString('utf-8')
-    logJson('debug', 'Extracted HTML content', { path, originalSize: part.body.data.length, decodedSize: html.length })
-  }
-
-  if (part.parts) {
-    logJson('debug', 'Processing child parts', { path, numParts: part.parts.length })
-    
-    part.parts.forEach((subpart, index) => {
-      const subPath = `${path}/part${index}`
-      const { text: subText, html: subHtml } = extractEmailContent(subpart, subPath, options)
-      if (subText) text += subText
-      if (subHtml) html += subHtml
-    })
-
-    logJson('debug', 'Finished processing child parts', { path, finalTextLength: text.length, finalHtmlLength: html.length })
-  }
-
-  return { text, html: options.includeBodyHtml ? html : undefined, headers: options.includeHeaders ? part.headers : undefined }
 }
 
-// Helper function to process attachments recursively
-const processAttachments = (part, attachments = [], path = '') => {
-  if (!part) {
-    logJson('debug', 'No part provided to processAttachments', { path })
-    return attachments
+const processMessage = (messagePart, path, headersList = DEFAULT_HEADERS_LIST, includeBodyHtml = false) => {
+  let body = null
+  if (messagePart.mimeType !== 'text/html' || includeBodyHtml) {
+    body = decodeBodyContent(messagePart.body, path)
   }
 
-  logJson('debug', 'Processing part for attachments', {
-    path,
-    mimeType: part.mimeType,
-    hasBody: !!part.body,
-    bodySize: part.body?.size || 0,
-    hasAttachmentId: !!part.body?.attachmentId,
-    filename: part.filename,
-    hasParts: !!part.parts
-  })
-
-  if (part.body?.attachmentId) {
-    const attachment = {
-      id: part.body.attachmentId,
-      filename: part.filename || `attachment-${part.body.attachmentId}`,
-      mimeType: part.mimeType || 'application/octet-stream',
-      size: part.body.size || 0
-    }
-    
-    logJson('debug', 'Found attachment', { path, ...attachment })
-    
-    attachments.push(attachment)
-  }
-
-  if (part.parts) {
-    logJson('debug', 'Processing child parts for attachments', {
-      path,
-      numParts: part.parts.length
-    })
-    
-    part.parts.forEach((subpart, index) => {
-      processAttachments(subpart, attachments, `${path}/part${index}`)
-    })
-
-    logJson('debug', 'Finished processing child parts for attachments', {
-      path,
-      totalAttachments: attachments.length
+  let parts = messagePart.parts
+  if (parts?.length > 0) {
+    parts = parts.map((part, index) => {
+      const subPath = `${path}/${index}`
+      return processMessage(part, subPath, headersList, includeBodyHtml)
     })
   }
 
-  return attachments
+  const headers = messagePart.headers.filter(header => headersList.includes(header.name))
+
+  return {
+    ...messagePart,
+    headers,
+    body,
+    parts
+  }
 }
 
 server.tool("create_draft",
@@ -377,11 +341,12 @@ server.tool("create_draft",
         data: z.string().describe("Base64 encoded attachment data"),
         mimeType: z.string().describe("MIME type of the attachment")
       })).optional().describe("File attachments")
-    }).describe("The message to be created as a draft")
+    }).describe("The message to be created as a draft"),
+    headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
     return handleEndpoint(async () => {
-      // Convert the user-friendly format to Gmail API format
       const message = {
         raw: params.message.raw || Buffer.from(
           `${params.message.to ? `To: ${params.message.to.join(', ')}\n` : ''}` +
@@ -400,6 +365,16 @@ server.tool("create_draft",
         'POST',
         { message }
       )
+
+      if (data.message?.payload) {
+        data.message.payload = processMessage(
+          data.message.payload,
+          '0',
+          params.headersList,
+          params.includeBodyHtml
+        )
+      }
+
       return formatResponse(data)
     })
   }
@@ -422,11 +397,12 @@ server.tool("send_message",
         data: z.string().describe("Base64 encoded attachment data"),
         mimeType: z.string().describe("MIME type of the attachment")
       })).optional().describe("File attachments")
-    }).describe("The message to be sent")
+    }).describe("The message to be sent"),
+    headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
     return handleEndpoint(async () => {
-      // Convert the user-friendly format to Gmail API format
       const message = {
         raw: params.message.raw || Buffer.from(
           `${params.message.to ? `To: ${params.message.to.join(', ')}\n` : ''}` +
@@ -445,6 +421,16 @@ server.tool("send_message",
         'POST',
         { message }
       )
+
+      if (data.payload) {
+        data.payload = processMessage(
+          data.payload,
+          '0',
+          params.headersList,
+          params.includeBodyHtml
+        )
+      }
+
       return formatResponse(data)
     })
   }
@@ -458,13 +444,11 @@ server.tool("list_messages",
     q: z.string().optional().describe("Only return messages matching the specified query. Supports the same query format as the Gmail search box"),
     labelIds: z.array(z.string()).optional().describe("Only return messages with labels that match all of the specified label IDs"),
     includeSpamTrash: z.boolean().optional().describe("Include messages from SPAM and TRASH in the results"),
-    includeHeaders: z.boolean().optional().describe("Whether to include headers from the e-mail for all components"),
-    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large"),
+    headersList: z.array(z.string()).optional().describe("List of headers to include in the return")
   },
   async (params) => {
-    logJson('info', 'Starting list_messages', { params })
     return handleEndpoint(async () => {
-      logJson('info', 'Processing list_messages request')
       let data = await callEndpoint(
         '/users/me/messages',
         {
@@ -479,47 +463,12 @@ server.tool("list_messages",
       if (data.messages) {
         data.messages = data.messages.map(message => {
           if (message.payload) {
-            const { text, html, headers } = extractEmailContent(message.payload, '', {
-              includeHeaders: params.includeHeaders,
-              includeBodyHtml: params.includeBodyHtml
-            })
-
-            const attachments = processAttachments(message.payload)
-
-            let parts = (message.payload.parts || []).map((part) => {
-              const { text, html, headers } = extractEmailContent(part, '', {
-                includeHeaders: params.includeHeaders,
-                includeBodyHtml: params.includeBodyHtml
-              })
-              return {
-                ...part,
-                body: {
-                  text,
-                  html,
-                  headers
-                }
-              }
-            })
-
-            return {
-              ...message,
-              payload: {
-                ...message.payload,
-                body: { 
-                  text, 
-                  html, 
-                  headers,
-                  attachments: attachments.length > 0 ? attachments : null 
-                },
-                parts
-              }
-            }
+            message.payload = processMessage(message.payload, '0', params.headersList, params.includeBodyHtml)
           }
           return message
         })
       }
 
-      logJson('info', 'List messages request completed')
       return formatResponse(data)
     })
   }
@@ -529,7 +478,7 @@ server.tool("get_message",
   "Get a specific message by ID with format options",
   {
     id: z.string().describe("The ID of the message to retrieve"),
-    includeHeaders: z.boolean().optional().describe("Whether to include headers from the e-mail for all components"),
+    headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
     includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
@@ -540,34 +489,7 @@ server.tool("get_message",
       )
 
       if (data.payload) {
-        const { text, html, headers } = extractEmailContent(data.payload, '', {
-          includeHeaders: params.includeHeaders,
-          includeBodyHtml: params.includeBodyHtml
-        })
-        
-        const attachments = processAttachments(data.payload)
-
-        let parts = (data.payload.parts || []).map((part) => {
-          const { text, html, headers } = extractEmailContent(part, '', {
-            includeHeaders: params.includeHeaders,
-            includeBodyHtml: params.includeBodyHtml
-          })
-          return { ...part, body: { text, html, headers } }
-        })
-
-        data = {
-          ...data,
-          payload: {
-            ...data.payload,
-            body: { 
-              text, 
-              html, 
-              headers,
-              attachments: attachments.length > 0 ? attachments : null 
-            },
-            parts
-          }
-        }
+        data.payload = processMessage(data.payload, '0', params.headersList, params.includeBodyHtml)
       }
 
       return formatResponse(data)
@@ -804,14 +726,39 @@ server.tool("list_threads",
     pageToken: z.string().optional().describe("Page token to retrieve a specific page of results"),
     q: z.string().optional().describe("Only return threads matching the specified query"),
     labelIds: z.array(z.string()).optional().describe("Only return threads with labels that match all of the specified label IDs"),
-    includeSpamTrash: z.boolean().optional().describe("Include threads from SPAM and TRASH in the results")
+    includeSpamTrash: z.boolean().optional().describe("Include threads from SPAM and TRASH in the results"),
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large"),
+    headersList: z.array(z.string()).optional().describe("List of headers to include in the return")
   },
   async (params) => {
     return handleEndpoint(async () => {
       const data = await callEndpoint(
         '/users/me/threads',
-        params
+        {
+          ...params,
+          format: 'full'
+        }
       )
+
+      if (data.threads) {
+        data.threads = data.threads.map(thread => {
+          if (thread.messages) {
+            thread.messages = thread.messages.map(message => {
+              if (message.payload) {
+                message.payload = processMessage(
+                  message.payload,
+                  '0',
+                  params.headersList,
+                  params.includeBodyHtml
+                )
+              }
+              return message
+            })
+          }
+          return thread
+        })
+      }
+
       return formatResponse(data)
     })
   }
@@ -821,7 +768,7 @@ server.tool("get_thread",
   "Get a specific thread by ID",
   {
     id: z.string().describe("The ID of the thread to retrieve"),
-    includeHeaders: z.boolean().optional().describe("Whether to include headers from the e-mail for all components"),
+    headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
     includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
@@ -834,41 +781,7 @@ server.tool("get_thread",
       if (data.messages) {
         data.messages = data.messages.map(message => {
           if (message.payload) {
-            const { text, html, headers } = extractEmailContent(message.payload, '', {
-              includeHeaders: params.includeHeaders,
-              includeBodyHtml: params.includeBodyHtml
-            })
-            
-            const attachments = processAttachments(message.payload)
-
-            let parts = (message.payload.parts || []).map((part) => {
-              const { text, html, headers } = extractEmailContent(part, '', {
-                includeHeaders: params.includeHeaders,
-                includeBodyHtml: params.includeBodyHtml
-              })
-              return {
-                ...part,
-                body: {
-                  text,
-                  html,
-                  headers
-                }
-              }
-            })
-
-            return {
-              ...message,
-              payload: {
-                ...message.payload,
-                body: { 
-                  text, 
-                  html, 
-                  headers,
-                  attachments: attachments.length > 0 ? attachments : null 
-                },
-                parts
-              }
-            }
+            message.payload = processMessage(message.payload, '0', params.headersList, params.includeBodyHtml)
           }
           return message
         })
@@ -957,14 +870,31 @@ server.tool("list_drafts",
     maxResults: z.number().optional().describe("Maximum number of drafts to return. Accepts values between 1-500"),
     pageToken: z.string().optional().describe("Page token to retrieve a specific page of results"),
     q: z.string().optional().describe("Only return drafts matching the specified query. Supports the same query format as the Gmail search box"),
-    includeSpamTrash: z.boolean().optional().describe("Include drafts from SPAM and TRASH in the results")
+    includeSpamTrash: z.boolean().optional().describe("Include drafts from SPAM and TRASH in the results"),
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large"),
+    headersList: z.array(z.string()).optional().describe("List of headers to include in the return")
   },
   async (params) => {
     return handleEndpoint(async () => {
       const data = await callEndpoint(
         '/users/me/drafts',
-        params
+        { ...params, format: 'full' }
       )
+
+      if (data.drafts) {
+        data.drafts = data.drafts.map(draft => {
+          if (draft.message?.payload) {
+            draft.message.payload = processMessage(
+              draft.message.payload,
+              '0',
+              params.headersList,
+              params.includeBodyHtml
+            )
+          }
+          return draft
+        })
+      }
+
       return formatResponse(data)
     })
   }
@@ -973,7 +903,9 @@ server.tool("list_drafts",
 server.tool("get_draft",
   "Get a specific draft by ID",
   {
-    id: z.string().describe("The ID of the draft to retrieve")
+    id: z.string().describe("The ID of the draft to retrieve"),
+    headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
     return handleEndpoint(async () => {
@@ -981,6 +913,16 @@ server.tool("get_draft",
         `/users/me/drafts/${params.id}`,
         { format: 'full' }
       )
+
+      if (data.message?.payload) {
+        data.message.payload = processMessage(
+          data.message.payload,
+          '0',
+          params.headersList,
+          params.includeBodyHtml
+        )
+      }
+
       return formatResponse(data)
     })
   }
@@ -1004,11 +946,12 @@ server.tool("update_draft",
         data: z.string().describe("Base64 encoded attachment data"),
         mimeType: z.string().describe("MIME type of the attachment")
       })).optional().describe("File attachments")
-    }).describe("The updated message content")
+    }).describe("The updated message content"),
+    headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
     return handleEndpoint(async () => {
-      // Convert the user-friendly format to Gmail API format
       const message = {
         raw: params.message.raw || Buffer.from(
           `${params.message.to ? `To: ${params.message.to.join(', ')}\n` : ''}` +
@@ -1027,6 +970,16 @@ server.tool("update_draft",
         'PUT',
         { message }
       )
+
+      if (data.message?.payload) {
+        data.message.payload = processMessage(
+          data.message.payload,
+          '0',
+          params.headersList,
+          params.includeBodyHtml
+        )
+      }
+
       return formatResponse(data)
     })
   }
@@ -1664,7 +1617,9 @@ server.tool("list_history",
     labelId: z.string().optional().describe("Only return messages with a label matching this ID"),
     maxResults: z.number().optional().describe("Maximum number of history records to return"),
     pageToken: z.string().optional().describe("Page token to retrieve a specific page of results"),
-    historyTypes: z.array(z.enum(['messageAdded', 'messageDeleted', 'labelAdded', 'labelRemoved'])).optional().describe("History types to be returned by the function")
+    historyTypes: z.array(z.enum(['messageAdded', 'messageDeleted', 'labelAdded', 'labelRemoved'])).optional().describe("History types to be returned by the function"),
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large"),
+    headersList: z.array(z.string()).optional().describe("List of headers to include in the return")
   },
   async (params) => {
     return handleEndpoint(async () => {
@@ -1672,9 +1627,33 @@ server.tool("list_history",
         '/users/me/history',
         {
           ...params,
-          historyTypes: params.historyTypes?.join(',')
+          historyTypes: params.historyTypes?.join(','),
+          format: 'full'
         }
       )
+
+      // Process messages in history records
+      if (data.history) {
+        data.history = data.history.map(record => {
+          ['messages', 'messagesAdded', 'messagesDeleted'].forEach(field => {
+            if (record[field]) {
+              record[field] = record[field].map(message => {
+                if (message.message?.payload) {
+                  message.message.payload = processMessage(
+                    message.message.payload,
+                    '0',
+                    params.headersList,
+                    params.includeBodyHtml
+                  )
+                }
+                return message
+              })
+            }
+          })
+          return record
+        })
+      }
+
       return formatResponse(data)
     })
   }
@@ -1768,7 +1747,9 @@ server.tool("import_message",
     internalDateSource: z.enum(['dateHeader', 'receivedTime']).optional().describe("Source for the message's internal date"),
     neverMarkSpam: z.boolean().optional().describe("Ignore spam classification"),
     processForCalendar: z.boolean().optional().describe("Process calendar invites in the email"),
-    deleted: z.boolean().optional().describe("Mark the email as permanently deleted")
+    deleted: z.boolean().optional().describe("Mark the email as permanently deleted"),
+    headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
     return handleEndpoint(async () => {
@@ -1776,8 +1757,24 @@ server.tool("import_message",
         '/users/me/messages/import',
         {},
         'POST',
-        params
+        {
+          raw: params.raw,
+          internalDateSource: params.internalDateSource,
+          neverMarkSpam: params.neverMarkSpam,
+          processForCalendar: params.processForCalendar,
+          deleted: params.deleted
+        }
       )
+
+      if (data.payload) {
+        data.payload = processMessage(
+          data.payload,
+          '0',
+          params.headersList,
+          params.includeBodyHtml
+        )
+      }
+
       return formatResponse(data)
     })
   }
@@ -1788,7 +1785,9 @@ server.tool("insert_message",
   {
     raw: z.string().describe("The entire email message in base64url encoded RFC 2822 format"),
     internalDateSource: z.enum(['dateHeader', 'receivedTime']).optional().describe("Source for the message's internal date"),
-    deleted: z.boolean().optional().describe("Mark the email as permanently deleted")
+    deleted: z.boolean().optional().describe("Mark the email as permanently deleted"),
+    headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
     return handleEndpoint(async () => {
@@ -1796,12 +1795,25 @@ server.tool("insert_message",
         '/users/me/messages',
         {},
         'POST',
-        params
+        {
+          raw: params.raw,
+          internalDateSource: params.internalDateSource,
+          deleted: params.deleted
+        }
       )
+
+      if (data.payload) {
+        data.payload = processMessage(
+          data.payload,
+          '0',
+          params.headersList,
+          params.includeBodyHtml
+        )
+      }
+
       return formatResponse(data)
     })
   }
 )
 const transport = new StdioServerTransport()
 await server.connect(transport)
-
