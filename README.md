@@ -7,10 +7,13 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) i
 
 ## Features
 
-- Create draft messages with support for CC and BCC recipients
-- Base64 encoding of email content following Gmail API requirements
+- Complete Gmail API coverage including messages, threads, labels, drafts, and settings
+- Support for sending, drafting, and managing emails
+- Label management with customizable colors and visibility settings
+- Thread operations for conversation management
+- Settings management including vacation responder, IMAP/POP, and language settings
+- History tracking for mailbox changes
 - Secure OAuth2 authentication using your Google Cloud credentials
-- RESTful API integration with Gmail's draft endpoints
 
 ## Installation
 
@@ -20,7 +23,9 @@ To use this MCP, you'll need to set up authentication with Gmail:
 2. Create a new project or select an existing one
 3. Enable the Gmail API for your project
 4. Go to Credentials and create an OAuth 2.0 Client ID
-5. Download the client credentials and note your CLIENT_ID and CLIENT_SECRET
+   - Choose "Desktop app" as the application type (*Warning*: if you don't choose this type the server will not be able to parse the keys from your JSON file)
+   - Download the client credentials JSON file
+5. Save the downloaded credentials file to `~/.gmail-mcp/gcp-oauth.keys.json`
 
 ### NPX (Recommended)
 
@@ -32,11 +37,7 @@ Add the following to your `claude_desktop_config.json`:
       "command": "npx",
       "args": [
         "@shinzolabs/gmail-mcp"
-      ],
-      "env": {
-        "CLIENT_ID": "your-client-id-here",
-        "CLIENT_SECRET": "your-client-secret-here"
-      }
+      ]
     }
   }
 }
@@ -62,13 +63,46 @@ pnpm i
       "command": "node",
       "args": [
         "/path/to/gmail-mcp/index.js"
-      ],
-      "env": {
-        "API_KEY": "your-key-here"
-      }
+      ]
     }
   }
 }
+```
+
+### Authentication Flow
+
+The MCP provides an automated authentication flow:
+
+1. First, ensure you have your OAuth credentials:
+   - Place the downloaded `credentials.json` in `~/.gmail-mcp/gcp-oauth.keys.json`
+   - Or set `GMAIL_OAUTH_PATH` to point to your credentials file
+
+2. Run the authentication command:
+```bash
+# If installed globally
+gmail-mcp auth
+
+# If using npx
+npx @shinzolabs/gmail-mcp auth
+
+# If in the project directory
+npm run auth
+```
+
+3. A browser window will automatically open to the Google OAuth consent screen
+4. After granting access, you can close the browser window
+5. The tokens will be automatically saved to `~/.gmail-mcp/credentials.json`
+
+The MCP will automatically:
+- Manage token refresh
+- Save credentials to disk
+- Handle the OAuth callback
+- Open the authentication URL in your default browser
+
+You can customize the credential file locations using environment variables:
+```bash
+GMAIL_OAUTH_PATH=/custom/path/to/gcp-oauth.keys.json
+GMAIL_CREDENTIALS_PATH=/custom/path/to/credentials.json
 ```
 
 ### Smithery
@@ -81,26 +115,111 @@ npx -y @smithery/cli install @shinzo-labs/gmail-mcp --client claude
 
 ## Supported Endpoints
 
-### draft_message
+### User Management
+- `get_profile`: Get the current user's Gmail profile
+- `stop_mail_watch`: Stop receiving push notifications
+- `watch_mailbox`: Set up push notifications for mailbox changes
 
-Creates a draft email message in Gmail.
+### Message Management
 
-Parameters:
-- `to`: Email address of the recipient
-- `subject`: Subject of the email
-- `body`: Body content of the email
-- `cc` (optional): CC recipients (comma-separated email addresses)
-- `bcc` (optional): BCC recipients (comma-separated email addresses)
+#### Sending and Creating Messages
+- `draft_email`: Creates a draft email message
+- `send_email`: Sends an email message
+- `import_message`: Import a message into the mailbox
+- `insert_message`: Insert a message into the mailbox
 
-Example usage:
-```javascript
-{
-  "to": "recipient@example.com",
-  "subject": "Hello from Gmail MCP",
-  "body": "This is a draft message.",
-  "cc": "cc1@example.com, cc2@example.com"
-}
-```
+#### Managing Messages
+- `list_messages`: List messages with optional filtering
+- `get_message`: Get a specific message
+- `get_attachment`: Get a message attachment
+- `modify_message`: Modify message labels
+- `delete_message`: Permanently delete a message
+- `trash_message`: Move message to trash
+- `untrash_message`: Remove message from trash
+- `batch_modify_messages`: Modify multiple messages
+- `batch_delete_messages`: Delete multiple messages
+
+### Label Management
+- `list_labels`: List all labels
+- `get_label`: Get a specific label
+- `create_label`: Create a new label
+- `update_label`: Update a label
+- `patch_label`: Partial update of a label
+- `delete_label`: Delete a label
+
+### Thread Management
+- `list_threads`: List email threads
+- `get_thread`: Get a specific thread
+- `modify_thread`: Modify thread labels
+- `trash_thread`: Move thread to trash
+- `untrash_thread`: Remove thread from trash
+- `delete_thread`: Delete a thread
+
+### Draft Management
+- `list_drafts`: List all drafts
+- `get_draft`: Get a specific draft
+- `update_draft`: Update draft content
+- `delete_draft`: Delete a draft
+- `send_draft`: Send an existing draft
+
+### Settings Management
+
+#### Auto-Forwarding
+- `get_auto_forwarding`: Get auto-forwarding settings
+- `update_auto_forwarding`: Update auto-forwarding settings
+
+#### IMAP Settings
+- `get_imap`: Get IMAP settings
+- `update_imap`: Update IMAP settings
+
+#### POP Settings
+- `get_pop`: Get POP settings
+- `update_pop`: Update POP settings
+
+#### Vacation Responder
+- `get_vacation`: Get vacation responder settings
+- `update_vacation`: Update vacation responder
+
+#### Language Settings
+- `get_language`: Get language settings
+- `update_language`: Update language settings
+
+#### Delegates
+- `list_delegates`: List account delegates
+- `get_delegate`: Get a specific delegate
+- `add_delegate`: Add a delegate
+- `remove_delegate`: Remove a delegate
+
+#### Filters
+- `list_filters`: List email filters
+- `get_filter`: Get a specific filter
+- `create_filter`: Create a new filter
+- `delete_filter`: Delete a filter
+
+#### Forwarding Addresses
+- `list_forwarding_addresses`: List forwarding addresses
+- `get_forwarding_address`: Get a specific forwarding address
+- `create_forwarding_address`: Create a forwarding address
+- `delete_forwarding_address`: Delete a forwarding address
+
+#### Send-As Settings
+- `list_send_as`: List send-as aliases
+- `get_send_as`: Get a specific send-as alias
+- `create_send_as`: Create a send-as alias
+- `update_send_as`: Update a send-as alias
+- `patch_send_as`: Partial update of a send-as alias
+- `verify_send_as`: Send verification email
+- `delete_send_as`: Delete a send-as alias
+
+#### S/MIME Settings
+- `list_smime_info`: List S/MIME configurations
+- `get_smime_info`: Get a specific S/MIME config
+- `insert_smime_info`: Upload a new S/MIME config
+- `set_default_smime_info`: Set default S/MIME config
+- `delete_smime_info`: Delete an S/MIME config
+
+### History
+- `list_history`: Track changes to the mailbox
 
 ## Contributing
 

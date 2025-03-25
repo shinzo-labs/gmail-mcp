@@ -1,0 +1,171 @@
+{
+  "id": "195ca4c9bd2aa943",
+  "threadId": "195ca4c9bd2aa943",
+  "labelIds": [
+    "UNREAD",
+    "IMPORTANT",
+    "CATEGORY_UPDATES",
+    "INBOX"
+  ],
+  "snippet": "Check out our event recap and videos of all our panels",
+  "payload": {
+    "partId": "",
+    "mimeType": "multipart/alternative",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "austin@shinzolabs.com"
+      },
+      {
+        "name": "Received",
+        "value": "by 2002:a05:7022:1002:b0:9a:f86d:ed4c with SMTP id em2csp2422066dlb;        Mon, 24 Mar 2025 15:36:13 -0700 (PDT)"
+      },
+      {
+        "name": "X-Google-Smtp-Source",
+        "value": "AGHT+IGM7AT5q2p9LTsZmG9jh4+ctffD8ahrLdO0bvYm2EQxRMQGTi1OcWxUFX72uwmo9Vo1iNSb"
+      },
+      {
+        "name": "X-Received",
+        "value": "by 2002:a05:622a:4106:b0:477:cc4:cb76 with SMTP id d75a77b69052e-4771dd54452mr273529451cf.3.1742855773046;        Mon, 24 Mar 2025 15:36:13 -0700 (PDT)"
+      },
+      {
+        "name": "ARC-Seal",
+        "value": "i=1; a=rsa-sha256; t=1742855773; cv=none;        d=google.com; s=arc-20240605;        b=Sr/l+qpgto7q2FDANRAbeunQAZaUUpB3iFLIc/z2HUVgYm4ahax7bY5i4qVn95/1Gx         wWdBsm6gvNDAFP3JfuIQR1ZCS2vVHjWnX4wMDbtLaIoKmrjurK7ZQUl1fynhYno4Wrhw         dUDdpS4pIe2S7YeQWud4lfbjEQ2WnT1jGszZ+uIgwncYl+oVAbBMXln0r1cpAGBdtHj4         3hdc3kk/6hr8w5oVA1zu7A9QdIUOjInWY4SJH1GDxU57ARb+hB1ZTrq69pcR/RN9kTTv         wlRabecGS6KSnmMmm5lzmu3S3xLOZv9/NblOHG1chB/z/jLA6Hz900cx+F8chgww9TFj         4rMA=="
+      },
+      {
+        "name": "ARC-Message-Signature",
+        "value": "i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;        h=feedback-id:precedence:list-id:list-unsubscribe-post         :list-unsubscribe:mime-version:subject:message-id:to:from:date         :dkim-signature:dkim-signature;        bh=KVmFNWBAbuZmAyQkuUGl1lUuYx0KuoV2Dr6mtLeBroQ=;        fh=aiJOiaARrFOW6CUpvKagDVpsAEQU1OLORAEUcj+uE/o=;        b=WDA/XYEHfQOgtEpn8d7bx+yjv5nD/hhcGaIVRpbI+HiR4D76L7cAi/fVtW513o+N4f         +rKhqHfewS8/2L3HKAqEleuuLjv7EzNof8+IoaDiRzhf7KBqE0b8oInd1oqQsEqn5wKl         5cyQPNUZG/3AcrmA3Cd5kfG7ED49xPCVW7iqbRq3tSTqPc4wp8kID2TRGS1hAfPlLhOp         vwIdg/RMa/EEMXOSC6bb5jjXoLdK5Lock71ccZ15bnVaaQ5YKwlV5BB0SH8Bfrszh2um         zb32NM3s2txXyZ/PoFS7eaTDt4E8cA6frr1bJLByQFnPnBbw1L/W8DiOwSXnKlpRnRcB         6Y5w==;        dara=google.com"
+      },
+      {
+        "name": "ARC-Authentication-Results",
+        "value": "i=1; mx.google.com;       dkim=pass header.i=@recall.network header.s=euqfp2mzew7disl642blgvig6ai2bzmx header.b=mdhrlJps;       dkim=pass header.i=@amazonses.com header.s=6gbrjpgwjskckoa6a5zn6fwqkn67xbtw header.b=NKLdR0MZ;       spf=pass (google.com: domain of 01000195ca4c9882-609ee1ca-771c-491f-a0a1-b00bed902e22-000000@envelope.recall.network designates 54.240.39.204 as permitted sender) smtp.mailfrom=01000195ca4c9882-609ee1ca-771c-491f-a0a1-b00bed902e22-000000@envelope.recall.network;       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=recall.network"
+      },
+      {
+        "name": "Return-Path",
+        "value": "<01000195ca4c9882-609ee1ca-771c-491f-a0a1-b00bed902e22-000000@envelope.recall.network>"
+      },
+      {
+        "name": "Received",
+        "value": "from a39-204.smtp-out.amazonses.com (a39-204.smtp-out.amazonses.com. [54.240.39.204])        by mx.google.com with ESMTPS id d75a77b69052e-4771d63ab18si88496271cf.510.2025.03.24.15.36.12        for <austin@shinzolabs.com>        (version=TLS1_3 cipher=TLS_AES_128_GCM_SHA256 bits=128/128);        Mon, 24 Mar 2025 15:36:13 -0700 (PDT)"
+      },
+      {
+        "name": "Received-SPF",
+        "value": "pass (google.com: domain of 01000195ca4c9882-609ee1ca-771c-491f-a0a1-b00bed902e22-000000@envelope.recall.network designates 54.240.39.204 as permitted sender) client-ip=54.240.39.204;"
+      },
+      {
+        "name": "Authentication-Results",
+        "value": "mx.google.com;       dkim=pass header.i=@recall.network header.s=euqfp2mzew7disl642blgvig6ai2bzmx header.b=mdhrlJps;       dkim=pass header.i=@amazonses.com header.s=6gbrjpgwjskckoa6a5zn6fwqkn67xbtw header.b=NKLdR0MZ;       spf=pass (google.com: domain of 01000195ca4c9882-609ee1ca-771c-491f-a0a1-b00bed902e22-000000@envelope.recall.network designates 54.240.39.204 as permitted sender) smtp.mailfrom=01000195ca4c9882-609ee1ca-771c-491f-a0a1-b00bed902e22-000000@envelope.recall.network;       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=recall.network"
+      },
+      {
+        "name": "DKIM-Signature",
+        "value": "v=1; a=rsa-sha256; q=dns/txt; c=relaxed/simple; s=euqfp2mzew7disl642blgvig6ai2bzmx; d=recall.network; t=1742855772; h=Date:From:To:Message-ID:Subject:MIME-Version:List-Unsubscribe:List-Unsubscribe-Post:List-ID:Content-Type; bh=LC4Ano/Wf5iP72Ek/d5hsOBqyDSjHSwL9TCbjNlxDz0=; b=mdhrlJpswej9OQRLQzJNtQU3onsXbSWUxRzjQcxgSXiuC/0XQrwkrY2LB0Uoo8Yp 3X9f91MQZ/AtQiSABwmBBXCW4/qt6LD8vhZrUfeuLkfjLL1BjGY/6beNKvyF1KfjCHt yO/umwZGsJr+owzBk4sY6UOprAVd3rNKDCODCW0G6qT1Ki0jKXJ+FiGqM0pvH02/mAg HES2lpJblHp6sqCkdycbgX7O/rc9QYz+MCh0Sa57chHdKeqhLhBFzSadI90yP3PP9tV H6zzuNshufYY3iZ02Cte47E+O5FMtcKIFOSaw5L2IS1VUxpO8iwmwqrwCG3j0+DH3TC uKXU6Ovcgw=="
+      },
+      {
+        "name": "DKIM-Signature",
+        "value": "v=1; a=rsa-sha256; q=dns/txt; c=relaxed/simple; s=6gbrjpgwjskckoa6a5zn6fwqkn67xbtw; d=amazonses.com; t=1742855772; h=Date:From:To:Message-ID:Subject:MIME-Version:List-Unsubscribe:List-Unsubscribe-Post:List-ID:Content-Type:Feedback-ID; bh=LC4Ano/Wf5iP72Ek/d5hsOBqyDSjHSwL9TCbjNlxDz0=; b=NKLdR0MZux2BGfnv9OQFBrA220iYs10JZQ6jNIGqJwWovtk5ygP+6n8PG9Z9s5Ij Co9ADGqAnyUivpsk1A6hYhgujKEy/xF3XVnlsNaedK4Zap1FgkuYH/NoXqwZyiYh2Hc XRenVsiBEm5DOsFRh6rgqUw5uN8QhDBfNJgru9+k="
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 24 Mar 2025 22:36:12 +0000"
+      },
+      {
+        "name": "From",
+        "value": "Recall <info@recall.network>"
+      },
+      {
+        "name": "To",
+        "value": "austin@shinzolabs.com"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<01000195ca4c9882-609ee1ca-771c-491f-a0a1-b00bed902e22-000000@email.amazonses.com>"
+      },
+      {
+        "name": "Subject",
+        "value": "Signals and ETHDenver Recap!"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "List-Unsubscribe",
+        "value": "<mailto:cm8nnbsc904qg01rd5s5ug6ez+91664b2590e44474ee43d064185a2222566992e528888bbeff01afd782153c48@unsubscribe.loops.so?subject=unsubscribe>,<https://app.loops.so/unsubscribe/cm8nnbsc904qg01rd5s5ug6ez/91664b2590e44474ee43d064185a2222566992e528888bbeff01afd782153c48>"
+      },
+      {
+        "name": "List-Unsubscribe-Post",
+        "value": "List-Unsubscribe=One-Click"
+      },
+      {
+        "name": "List-ID",
+        "value": "\"Recall\" <general.recall.network>"
+      },
+      {
+        "name": "Precedence",
+        "value": "Bulk"
+      },
+      {
+        "name": "X-Auto-Response-Suppress",
+        "value": "All"
+      },
+      {
+        "name": "Content-Type",
+        "value": "multipart/alternative; boundary=ytrf7q2dlj"
+      },
+      {
+        "name": "Feedback-ID",
+        "value": "::1.us-east-1.1nRXWOT+ETvogqnAUaOa7HjKGx1p40xVES7T8DfH/Gc=:AmazonSES"
+      },
+      {
+        "name": "X-SES-Outgoing",
+        "value": "2025.03.24-54.240.39.204"
+      }
+    ],
+    "body": {
+      "text": "Very Long Text",
+      "attachments": null
+    },
+    "parts": [
+      {
+        "partId": "0",
+        "mimeType": "text/plain",
+        "filename": "",
+        "headers": [
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=UTF-8"
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "body": {
+          "size": 5165,
+          "data": "Very Long Data Payload"
+        }
+      },
+      {
+        "partId": "1",
+        "mimeType": "text/html",
+        "filename": "",
+        "headers": [
+          {
+            "name": "Content-Type",
+            "value": "text/html; charset=UTF-8"
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "body": {
+          "size": 60277,
+          "data": "Very Long Data Payload"
+        }
+      }
+    ]
+  }
+}
+
