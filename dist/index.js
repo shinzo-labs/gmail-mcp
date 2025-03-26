@@ -136,15 +136,22 @@ const constructRawMessage = async (params) => {
         thread = data;
     }
     const message = [];
-    if (params.to)
-        message.push(`To: ${params.to}`);
-    if (params.cc)
-        message.push(`Cc: ${params.cc}`);
-    if (params.bcc)
-        message.push(`Bcc: ${params.bcc}`);
-    if (thread)
+    if (params.to?.length)
+        message.push(`To: ${params.to.join(', ')}`);
+    if (params.cc?.length)
+        message.push(`Cc: ${params.cc.join(', ')}`);
+    if (params.bcc?.length)
+        message.push(`Bcc: ${params.bcc.join(', ')}`);
+    if (thread) {
         message.push(...getThreadHeaders(thread));
-    message.push('Content-Type: text/plain charset="UTF-8"');
+    }
+    else if (params.subject) {
+        message.push(`Subject: ${params.subject}`);
+    }
+    else {
+        message.push('Subject: (No Subject)');
+    }
+    message.push('Content-Type: text/plain; charset="UTF-8"');
     message.push('MIME-Version: 1.0');
     message.push('');
     if (params.body)
@@ -152,14 +159,14 @@ const constructRawMessage = async (params) => {
     if (thread)
         message.push(getQuotedContent(thread));
     logger('debug', 'Constructed raw email message', { message });
-    return Buffer.from(message.join('\r\n')).toString('base64url');
+    return Buffer.from(message.join('\r\n')).toString('base64url').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); // TODO validate this
 };
 server.tool("create_draft", "Create a draft email in Gmail", {
     raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format"),
     threadId: z.string().optional().describe("The thread ID to associate this draft with"),
-    to: z.string().optional().describe("The recipient's email address"),
-    cc: z.string().optional().describe("The CC recipient's email address"),
-    bcc: z.string().optional().describe("The BCC recipient's email address"),
+    to: z.array(z.string()).optional().describe("List of recipient email addresses"),
+    cc: z.array(z.string()).optional().describe("List of CC recipient email addresses"),
+    bcc: z.array(z.string()).optional().describe("List of BCC recipient email addresses"),
     subject: z.string().optional().describe("The subject of the email"),
     body: z.string().optional().describe("The body of the email"),
     attachments: z.array(z.object({
@@ -244,9 +251,9 @@ server.tool("update_draft", "Replace a draft's content", {
     id: z.string().describe("The ID of the draft to update"),
     raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format"),
     threadId: z.string().optional().describe("The thread ID to associate this draft with"),
-    to: z.string().optional().describe("The recipient's email address"),
-    cc: z.string().optional().describe("The CC recipient's email address"),
-    bcc: z.string().optional().describe("The BCC recipient's email address"),
+    to: z.array(z.string()).optional().describe("List of recipient email addresses"),
+    cc: z.array(z.string()).optional().describe("List of CC recipient email addresses"),
+    bcc: z.array(z.string()).optional().describe("List of BCC recipient email addresses"),
     subject: z.string().optional().describe("The subject of the email"),
     body: z.string().optional().describe("The body of the email"),
     attachments: z.array(z.object({
@@ -414,9 +421,9 @@ server.tool("modify_message", "Modify the labels on a message", {
 server.tool("send_message", "Send an email message to specified recipients", {
     raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format"),
     threadId: z.string().optional().describe("The thread ID to associate this message with"),
-    to: z.string().optional().describe("The recipient's email address"),
-    cc: z.string().optional().describe("The CC recipient's email address"),
-    bcc: z.string().optional().describe("The BCC recipient's email address"),
+    to: z.array(z.string()).optional().describe("List of recipient email addresses"),
+    cc: z.array(z.string()).optional().describe("List of CC recipient email addresses"),
+    bcc: z.array(z.string()).optional().describe("List of BCC recipient email addresses"),
     subject: z.string().optional().describe("The subject of the email"),
     body: z.string().optional().describe("The body of the email"),
     attachments: z.array(z.object({
