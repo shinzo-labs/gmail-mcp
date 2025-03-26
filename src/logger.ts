@@ -1,7 +1,7 @@
 import { LOG_PATH } from "./config"
 import fs from "fs"
 
-type LogLevel = 'info' | 'debug' | 'trace' | 'error'
+type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error'
 
 type Log = {
   timestamp: string

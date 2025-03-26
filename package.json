@@ -9,14 +9,16 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
-    "auth": "node dist/index.js"
+    "start": "node --loader ts-node/esm src/index.ts",
+    "auth": "node --loader ts-node/esm src/index.ts auth",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "googleapis": "^129.0.0",
     "google-auth-library": "^9.6.3",
     "open": "^9.1.0",
+    "ts-node": "^10.9.2",
     "zod": "^3.22.4"
   },
   "devDependencies": {

@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
-    "target": "es2022",
-    "module": "ES2022",
+    "target": "es2021",
+    "module": "CommonJS",
     "noErrorTruncation": true,
     "strict": true,
     "noUnusedLocals": false,
