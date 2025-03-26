@@ -62,7 +62,7 @@ pnpm i
     "gmail": {
       "command": "node",
       "args": [
-        "/path/to/gmail-mcp/index.js"
+        "/path/to/gmail-mcp/dist/index.js"
       ]
     }
   }
@@ -79,14 +79,11 @@ The MCP provides an automated authentication flow:
 
 2. Run the authentication command:
 ```bash
-# If installed globally
-gmail-mcp auth
-
 # If using npx
 npx @shinzolabs/gmail-mcp auth
 
 # If in the project directory
-npm run auth
+pnpm run auth
 ```
 
 3. A browser window will automatically open to the Google OAuth consent screen
