@@ -4,30 +4,70 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod"
 import { google } from 'googleapis'
-import { OAuth2Client } from 'google-auth-library'
-import fs from 'fs'
-import path from 'path'
-import os from 'os'
-import http from 'http'
-import open from 'open'
+import { logger } from "logger"
+import { createOAuth2Client, launchAuthServer, validateCredentials } from "./oauth2"
 
-const server = new McpServer({
-  name: "Gmail-MCP",
-  version: "1.0.0",
-  description: "An expansive MCP for the Gmail API"
-})
+type EndpointParams = {
+  id?: string
+  messageId?: string
+  threadId?: string
+  format?: string
+  // [key: string]: string | number | boolean | null | undefined
+}
 
-const CONFIG_DIR = path.join(os.homedir(), '.gmail-mcp')
-const LOG_PATH = process.env.LOG_PATH || path.join(CONFIG_DIR, 'gmail-mcp.log')
-const GMAIL_OAUTH_PATH = process.env.GMAIL_OAUTH_PATH || path.join(CONFIG_DIR, 'gcp-oauth.keys.json')
-const GMAIL_CREDENTIALS_PATH = process.env.GMAIL_CREDENTIALS_PATH || path.join(CONFIG_DIR, 'credentials.json')
-const AUTH_SCOPES = [
-  'https://www.googleapis.com/auth/gmail.modify',
-  'https://www.googleapis.com/auth/gmail.compose',
-  'https://www.googleapis.com/auth/gmail.send',
-  'https://www.googleapis.com/auth/gmail.settings.basic',
-  'https://www.googleapis.com/auth/gmail.settings.sharing'
-]
+type Message = {
+  id: string
+  threadId: string
+  labelIds: string[]
+  snippet: string
+  historyId: string
+  internalDate: string
+  payload: MessagePart
+  sizeEstimate: number
+  raw: string
+}
+
+type MessagePartBody = {
+  data?: string
+  size?: number
+  originalSize?: number // Custom Field
+  attachmentId?: string
+}
+
+type MessagePartHeader = {
+  name: string
+  value: string
+}
+
+type MessagePart = {
+  body: MessagePartBody
+  parts?: MessagePart[]
+  mimeType: string
+  filename?: string
+  headers: MessagePartHeader[]
+}
+
+type Draft = {
+  id: string
+  message: Message
+}
+
+type Thread = {
+  id: string
+  snippet: string
+  historyId: string
+  messages: Message[]
+}
+
+type NewMessage = {
+  threadId?: string
+  raw?: string
+  to?: string
+  cc?: string
+  bcc?: string
+  body?: string
+}
+
 const DEFAULT_HEADERS_LIST = [
   'Date',
   'From',
@@ -38,192 +78,40 @@ const DEFAULT_HEADERS_LIST = [
   'References'
 ]
 
-type LogLevel = 'info' | 'debug' | 'trace' | 'error'
-
-type Log = {
-  timestamp: string
-  level: LogLevel
-  message: string
-  data?: any
-}
-
-type OAuthKeys = {
-  installed: {
-    client_id: string
-    client_secret: string
-    redirect_uris: string[]
-  }
-}
-
-const logger = (level: LogLevel, message: string, data?: any) => {
-  const log: Log = { timestamp: new Date().toISOString(), level, message }
-  if (data) log.data = data
-
-  try {
-    fs.appendFileSync(LOG_PATH, JSON.stringify(log) + '\n')
-  } catch (error: any) {
-    console.error('Error writing to log file:', { error: error.message })
-  }
-}
-
-const throwError = (message: string, data?: any) => {
-  logger('error', message, data)
-  throw new Error(message)
-}
-
-const createOAuth2Client = () => {
-  logger('info', 'Starting OAuth2Client creation')
-
-  if (!fs.existsSync(GMAIL_OAUTH_PATH)) {
-    throwError(`OAuth2 keys file not found at ${GMAIL_OAUTH_PATH}`)
-  }
-
-  let parsedKeys: any
-
-  try {
-    const keysContent = fs.readFileSync(GMAIL_OAUTH_PATH, 'utf8')
-    parsedKeys = JSON.parse(keysContent)
-  } catch (error: any) {
-    throwError('Failed to read OAuth keys', { error: error.message })
-  }
-
-  if (!parsedKeys?.installed.client_id || !parsedKeys.installed.client_secret) {
-    throwError('Invalid OAuth keys format', parsedKeys)
-  }
-
-  const keys: OAuthKeys = parsedKeys
-
-  logger('info', 'Creating OAuth2Client with credentials')
-
-  const oauth2Client = new OAuth2Client({
-    clientId: keys.installed.client_id,
-    clientSecret: keys.installed.client_secret,
-    redirectUri: 'http://localhost:3000/oauth2callback'
-  })
-
-  if (fs.existsSync(GMAIL_CREDENTIALS_PATH)) {
-    logger('info', `Found existing credentials file at ${GMAIL_CREDENTIALS_PATH}`)
-    try {
-      const credentials = JSON.parse(fs.readFileSync(GMAIL_CREDENTIALS_PATH, 'utf8'))
-      oauth2Client.setCredentials(credentials)
-      logger('info', 'Successfully loaded existing credentials')
-    } catch (error: any) {
-      logger('error', 'Failed to read or parse credentials file', { error: error.message })
-    }
-  } else {
-    logger('info', `No existing credentials file found at ${GMAIL_CREDENTIALS_PATH}`)
-  }
-
-  return oauth2Client
-}
-
-const authenticate = async (inAuthFlow: boolean, oauth2Client: OAuth2Client) => {
-  const credentials = oauth2Client.credentials
-
-  if (credentials && credentials.access_token) {
-    logger('info', 'Valid credentials found, skipping authentication flow')
-    return
-  }
-
-  return new Promise((resolve, reject) => {
-    const server = http.createServer()
-    server.listen(3000)
-
-    const authUrl = oauth2Client.generateAuthUrl({ access_type: 'offline', scope: AUTH_SCOPES })
-
-    logger('info', `Please visit this URL to authenticate: ${authUrl}`)
-
-    open(authUrl)
-
-    server.on('request', async (req, res) => {
-      if (!req.url?.startsWith('/oauth2callback')) return
-
-      const url = new URL(req.url, 'http://localhost:3000')
-      const code = url.searchParams.get('code')
-
-      if (!code) {
-        res.writeHead(400)
-        res.end('No code provided')
-        reject(new Error('No code provided'))
-        return
-      }
-
-      try {
-        const { tokens } = await oauth2Client.getToken(code)
-        oauth2Client.setCredentials(tokens)
-        fs.writeFileSync(GMAIL_CREDENTIALS_PATH, JSON.stringify(tokens, null, 2))
-
-        res.writeHead(200)
-        res.end('Authentication successful! You can close this window.')
-        server.close()
-        resolve(void 0)
-      } catch (error: any) {
-        res.writeHead(500)
-        res.end('Authentication failed')
-        reject(error)
-      }
-    })
-  })
-}
-
 const oauth2Client = createOAuth2Client()
-await authenticate(process.argv[2] === 'auth', oauth2Client)
+
+if (process.argv[2] === 'auth') {
+  await launchAuthServer(oauth2Client)
+  process.exit(0)
+}
+
+const server = new McpServer({
+  name: "Gmail-MCP",
+  version: "1.0.0",
+  description: "An expansive MCP for the Gmail API"
+})
 
 const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
 
-const ensureValidCredentials = async () => {
-  if (!oauth2Client) throwError('OAuth2 client not initialized. Please check your credentials.')
-
-  const credentials = oauth2Client.credentials
-  if (!credentials || !credentials.access_token) {
-    logger('info', 'No credentials found, starting authentication flow')
-    try {
-      await authenticate(oauth2Client)
-      logger('info', 'Authentication completed successfully')
-    } catch (error) { throwError(`Authentication failed, you may need to run "npx @shinzolabs/gmail-mcp auth" to authenticate: ${error.message}`) }
-  }
-
-  try {
-    const expiryDate = credentials.expiry_date
-    const currentTime = Date.now()
-    const isExpired = expiryDate ? expiryDate <= currentTime : true
-
-    if (!isExpired) {
-      logger('info', 'Credentials are still valid')
-      return
-    }
-    if (!credentials.refresh_token) throwError('No refresh token found, please re-authenticate')
-
-    const timeUntilExpiry = expiryDate ? (expiryDate - currentTime) : 0
-    logger('info', `Access token is ${isExpired ? 'expired' : 'expiring in ' + timeUntilExpiry + ' seconds'}, refreshing token`)
-
-    const { credentials: newCredentials } = await oauth2Client.refreshToken(credentials.refresh_token)
-    const mergedCredentials = { ...newCredentials, refresh_token: credentials.refresh_token }
-    oauth2Client.setCredentials(mergedCredentials)
-    
-    fs.writeFileSync(GMAIL_CREDENTIALS_PATH, JSON.stringify(mergedCredentials, null, 2))
-    logger('info', 'Successfully refreshed and saved new credentials')
-  } catch (error) { throwError(`Error validating credentials: ${error.message}`) }
-}
-
-const formatResponse = (messageOrData, status = 200) => ({
-  content: [{ type: "text", text: JSON.stringify(
-    typeof messageOrData === 'string' ? { error: messageOrData, status } : messageOrData
-  )}]
+const formatResponse = (response: any) => ({
+  content: [{ type: "text", text: JSON.stringify(response) }]
 })
 
-const callEndpoint = async (endpoint, params = {}, method = 'GET', body = null) => {
+const callEndpoint = async (endpoint: string, params: EndpointParams, method = 'GET', body = null) => {
   logger('info', 'Starting API request', { endpoint, params })
-  
-  await ensureValidCredentials()
-  logger('info', 'Credentials validated')
 
+  const credentialsAreValid = await validateCredentials(oauth2Client)
+  if (!credentialsAreValid) throw new Error('No credentials found, you may need to run "npx @shinzolabs/gmail-mcp auth" to authenticate')
+
+  // Example: '/users/me/messages/send'
   const parts = endpoint.split('/')
+  const userId = parts[2]
   let resource = parts[3]
-  let resourceMethod = 'list'
+  let resourceMethod
 
+  //TODO double-check this logic
   if (resource === 'settings') {
-    resource = `${resource}.${parts[4]}`
+    resource += '.' + parts[4]
     resourceMethod = parts[5] || 'list'
   } else {
     if (method === 'GET') {
@@ -270,109 +158,88 @@ const callEndpoint = async (endpoint, params = {}, method = 'GET', body = null) 
     }
   }
 
-  const requestParams = { userId: 'me', ...params }
+  const requestParams = { userId, ...params }
 
   if (body) Object.assign(requestParams, body)
 
-  try {
-    logger('info', 'Making API call', { resource, resourceMethod, params: requestParams })
-    
-    if (!gmail.users[resource]) {
-      throwError(`Invalid API resource: users.${resource}`)
-    }
+  logger('info', 'Making API call', { resource, resourceMethod, params: requestParams })
+  
+  const resourceApi = gmail.users[resource as keyof typeof gmail.users]
+  if (!resourceApi) throw new Error(`Invalid resource: ${resource}`)
 
-    if (!gmail.users[resource][resourceMethod]) {
-      throwError(`Invalid API method: users.${resource}.${resourceMethod}`)
-    }
+  const gmailServiceCall = resourceApi[resourceMethod as keyof typeof resourceApi] as (params: any) => Promise<{ data: any }>
+  if (!gmailServiceCall) throw new Error(`Invalid resource method: ${resource}.${resourceMethod}`)
 
-    const response = await gmail.users[resource][resourceMethod](requestParams)
-    logger('info', 'API call successful')
-    return response.data
-  } catch (error) {
-    throwError(`API request failed: ${error.message}`)
-  }
+  const { data } = await gmailServiceCall(requestParams)
+  logger('info', 'API call successful')
+  return data
 }
 
-const handleEndpoint = async (apiCall) => {
-  logger('info', 'Starting endpoint handler')
+const handleTool = async (apiCall: () => Promise<any>) => {
+  logger('info', 'Starting tool handler')
   try {
     const result = await apiCall()
-    logger('info', 'Endpoint handler completed successfully')
+    logger('info', 'Tool execution completed successfully')
     return result
-  } catch (error) { throwError(`Endpoint handler failed: ${error.message}\n${error.stack}`) }
+  } catch (error: any) {
+    logger('error', `Tool execution failed: ${error.message}\n${error.stack}`)
+    return `Tool execution failed: ${error.message}`
+  }
 }
 
-const decodeBodyContent = (body, path) => {
-  if (!body?.data) return null
+const decodedBody = (body: MessagePartBody) => {
+  if (!body?.data) return body
 
+  logger('debug', 'Decoding body', body)
   const decodedData = Buffer.from(body.data, 'base64').toString('utf-8')
-  logger('debug', 'Extracted plain text content', { path, originalSize: body.data.length, decodedSize: decodedData.length })
-  return {
-    attachmentId: body.attachmentId,
+  const decodedBody: MessagePartBody = {
     data: decodedData,
+    size: body.data.length,
     originalSize: body.data.length,
-    decodedSize: decodedData.length
+    attachmentId: body.attachmentId
   }
+  logger('debug', 'Decoded body', decodedBody)
+  return decodedBody
 }
 
-const processMessage = (messagePart, path, headersList = DEFAULT_HEADERS_LIST, includeBodyHtml = false) => {
-  let body = null
+const processMessage = (messagePart: MessagePart, headersList = DEFAULT_HEADERS_LIST, includeBodyHtml = false): MessagePart => {
   if (messagePart.mimeType !== 'text/html' || includeBodyHtml) {
-    body = decodeBodyContent(messagePart.body, path)
+    messagePart.body = decodedBody(messagePart.body)
   }
 
-  let parts = messagePart.parts
-  if (parts?.length > 0) {
-    parts = parts.map((part, index) => {
-      const subPath = `${path}/${index}`
-      return processMessage(part, subPath, headersList, includeBodyHtml)
-    })
-  }
-
-  const headers = messagePart.headers.filter(header => headersList.includes(header.name))
-
-  return {
-    ...messagePart,
-    headers,
-    body,
-    parts
-  }
-}
-
-const extractMessageContent = (messagePart, level = 1) => {
-  if (!messagePart) return ''
-  
-  if (messagePart.mimeType === 'text/plain' && messagePart.body?.data) {
-    const decoded = Buffer.from(messagePart.body.data, 'base64').toString('utf-8')
-    const prefix = '>' + ' '.repeat(level)
-    return decoded.split('\n')
-      .map(line => prefix + (line.startsWith('>') ? '' : ' ') + line)
-      .join('\n')
-  }
-  
   if (messagePart.parts) {
-    return messagePart.parts
-      .map(p => extractMessageContent(p, level + 1))
-      .filter(Boolean)
-      .join('\n')
+    messagePart.parts = messagePart.parts.map(part => processMessage(part, headersList, includeBodyHtml))
   }
-  
-  return '';
+
+  messagePart.headers = messagePart.headers.filter(header => headersList.includes(header.name))
+
+  return messagePart
 }
 
-const getHeaderValue = (headers, name) => {
+const getNestedHistory = (messagePart: MessagePart, level = 1): string => {
+  if (messagePart.mimeType === 'text/plain' && messagePart.body?.data) {
+    const { data } = decodedBody(messagePart.body)
+    if (!data) return ''
+    const prefix = '>' + ' '.repeat(level)
+    return data.split('\n').map(line => prefix + (line.startsWith('>') ? '' : ' ') + line).join('\n')
+  }
+
+  return (messagePart.parts || []).map(p => getNestedHistory(p, level + 1)).filter(p => p).join('\n')
+}
+
+const findHeader = (headers: MessagePartHeader[], name: string) => {
   if (!headers || !Array.isArray(headers) || !name) return null;
   return headers.find(h => h?.name?.toLowerCase() === name.toLowerCase())?.value
 }
 
-const getQuotedContent = (threadData) => {
-  if (!threadData?.messages?.length) return ''
+const getQuotedContent = (thread: Thread) => {
+  if (!thread.messages.length) return ''
 
-  const lastMessage = threadData.messages[threadData.messages.length - 1]
+  const lastMessage = thread.messages[thread.messages.length - 1]
   if (!lastMessage?.payload) return ''
 
-  const fromHeader = getHeaderValue(lastMessage.payload.headers, 'from')
-  const dateHeader = getHeaderValue(lastMessage.payload.headers, 'date')
+  const fromHeader = findHeader(lastMessage.payload.headers, 'from')
+  const dateHeader = findHeader(lastMessage.payload.headers, 'date')
 
   let quotedContent = []
   
@@ -382,7 +249,7 @@ const getQuotedContent = (threadData) => {
     quotedContent.push('')
   }
 
-  const nestedHistory = extractMessageContent(lastMessage.payload, 1)
+  const nestedHistory = getNestedHistory(lastMessage.payload)
   if (nestedHistory) {
     quotedContent.push(nestedHistory)
     quotedContent.push('') // Add extra newline for spacing between quotes
@@ -391,15 +258,15 @@ const getQuotedContent = (threadData) => {
   return quotedContent.join('\n')
 }
 
-const getThreadHeaders = (threadData) => {
-  let headers = []
-  if (!threadData?.messages?.length) return headers
+const getThreadHeaders = (thread: Thread) => {
+  let headers: string[] = []
 
-  const lastMessage = threadData.messages[threadData.messages.length - 1]
-  const references = []
+  if (!thread.messages.length) return headers
+
+  const lastMessage = thread.messages[thread.messages.length - 1]
+  const references: string[] = []
   
-  // Handle subject
-  let subjectHeader = getHeaderValue(lastMessage.payload.headers, 'subject')
+  let subjectHeader = findHeader(lastMessage.payload.headers, 'subject')
   if (subjectHeader) {
     if (!subjectHeader.toLowerCase().startsWith('re:')) {
       subjectHeader = `Re: ${subjectHeader}`
@@ -407,51 +274,41 @@ const getThreadHeaders = (threadData) => {
     headers.push(`Subject: ${subjectHeader}`)
   }
 
-  // Add threading headers
-  const messageIdHeader = getHeaderValue(lastMessage.payload.headers, 'message-id')
+  const messageIdHeader = findHeader(lastMessage.payload.headers, 'message-id')
   if (messageIdHeader) {
     headers.push(`In-Reply-To: ${messageIdHeader}`)
     references.push(messageIdHeader)
   }
 
-  const referencesHeader = getHeaderValue(lastMessage.payload.headers, 'references')
-  if (referencesHeader) {
-    references.unshift(...referencesHeader.split(' '))
-  }
+  const referencesHeader = findHeader(lastMessage.payload.headers, 'references')
+  if (referencesHeader) references.unshift(...referencesHeader.split(' '))
 
-  if (references.length > 0) {
-    headers.push(`References: ${references.join(' ')}`)
-  }
+  if (references.length > 0) headers.push(`References: ${references.join(' ')}`)
 
   return headers
 }
 
-const constructRawEmailMessage = async (params) => {
+const constructRawMessage = async (params: NewMessage) => {
   logger('debug', 'Constructing raw email message', { params })
 
-  let threadData = null
+  let thread: Thread | null = null
   if (params.threadId) {
-    threadData = await callEndpoint(
+    thread = await callEndpoint(
       `/users/me/threads/${params.threadId}`,
       { format: 'full' }
     )
   }
 
   const message = []
-  
   if (params.to) message.push(`To: ${params.to}`)
   if (params.cc) message.push(`Cc: ${params.cc}`)
   if (params.bcc) message.push(`Bcc: ${params.bcc}`)
-
-  message.push(...getThreadHeaders(threadData))
-
+  if (thread) message.push(...getThreadHeaders(thread))
   message.push('Content-Type: text/plain charset="UTF-8"')
   message.push('MIME-Version: 1.0')
   message.push('')
-
-  message.push(params.body || '')
-
-  message.push(getQuotedContent(threadData))
+  if (params.body) message.push(params.body)
+  if (thread) message.push(getQuotedContent(thread))
 
   logger('debug', 'Constructed raw email message', { message })
 
@@ -477,9 +334,9 @@ server.tool("create_draft",
     includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       let raw = params.raw
-      if (!raw) raw = await constructRawEmailMessage(params)
+      if (!raw) raw = await constructRawMessage(params)
 
       const requestBody = { message: { raw } }
       if (params.threadId) requestBody.message.threadId = params.threadId
@@ -524,9 +381,9 @@ server.tool("send_message",
     includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       let raw = params.raw
-      if (!raw) raw = await constructRawEmailMessage(params)
+      if (!raw) raw = await constructRawMessage(params)
 
       const requestBody = { raw }
       if (params.threadId) requestBody.threadId = params.threadId
@@ -564,7 +421,7 @@ server.tool("list_messages",
     headersList: z.array(z.string()).optional().describe("List of headers to include in the return")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       let data = await callEndpoint(
         '/users/me/messages',
         {
@@ -598,7 +455,7 @@ server.tool("get_message",
     includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       let data = await callEndpoint(
         `/users/me/messages/${params.id}`,
         { format: 'full' }
@@ -621,7 +478,7 @@ server.tool("modify_message",
     removeLabelIds: z.array(z.string()).optional().describe("A list of label IDs to remove from the message")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/messages/${params.id}/modify`,
         {},
@@ -642,7 +499,7 @@ server.tool("trash_message",
     id: z.string().describe("The ID of the message to move to trash")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/messages/${params.id}/trash`,
         {},
@@ -659,7 +516,7 @@ server.tool("untrash_message",
     id: z.string().describe("The ID of the message to remove from trash")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/messages/${params.id}/untrash`,
         {},
@@ -678,7 +535,7 @@ server.tool("batch_modify_messages",
     removeLabelIds: z.array(z.string()).optional().describe("A list of label IDs to remove from the messages")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/messages/batchModify',
         {},
@@ -700,7 +557,7 @@ server.tool("batch_delete_messages",
     ids: z.array(z.string()).describe("The IDs of the messages to delete")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/messages/batchDelete',
         {},
@@ -718,7 +575,7 @@ server.tool("list_labels",
   "List all labels in the user's mailbox",
   {},
   async () => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/labels'
       )
@@ -733,7 +590,7 @@ server.tool("get_label",
     id: z.string().describe("The ID of the label to retrieve")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/labels/${params.id}`
       )
@@ -754,7 +611,7 @@ server.tool("create_label",
     }).optional().describe("The color settings for the label")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/labels',
         {},
@@ -780,7 +637,7 @@ server.tool("update_label",
   },
   async (params) => {
     const { id, ...labelData } = params
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/labels/${id}`,
         {},
@@ -806,7 +663,7 @@ server.tool("patch_label",
   },
   async (params) => {
     const { id, ...labelData } = params
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/labels/${id}`,
         {},
@@ -824,7 +681,7 @@ server.tool("delete_label",
     id: z.string().describe("The ID of the label to delete")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/labels/${params.id}`,
         {},
@@ -847,7 +704,7 @@ server.tool("list_threads",
     headersList: z.array(z.string()).optional().describe("List of headers to include in the return")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/threads',
         {
@@ -888,7 +745,7 @@ server.tool("get_thread",
     includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       let data = await callEndpoint(
         `/users/me/threads/${params.id}`,
         { format: 'full' }
@@ -917,7 +774,7 @@ server.tool("modify_thread",
   },
   async (params) => {
     const { id, ...threadData } = params
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/threads/${id}/modify`,
         {},
@@ -935,7 +792,7 @@ server.tool("trash_thread",
     id: z.string().describe("The ID of the thread to move to trash")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/threads/${params.id}/trash`,
         {},
@@ -952,7 +809,7 @@ server.tool("untrash_thread",
     id: z.string().describe("The ID of the thread to remove from trash")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/threads/${params.id}/untrash`,
         {},
@@ -969,7 +826,7 @@ server.tool("delete_thread",
     id: z.string().describe("The ID of the thread to delete")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/threads/${params.id}`,
         {},
@@ -991,7 +848,7 @@ server.tool("list_drafts",
     headersList: z.array(z.string()).optional().describe("List of headers to include in the return")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/drafts',
         { ...params, format: 'full' }
@@ -1024,7 +881,7 @@ server.tool("get_draft",
     includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/drafts/${params.id}`,
         { format: 'full' }
@@ -1064,9 +921,9 @@ server.tool("update_draft",
     includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       let raw = params.raw
-      if (!raw) raw = await constructRawEmailMessage(params)
+      if (!raw) raw = await constructRawMessage(params)
 
       const requestBody = { message: { raw } }
       if (params.threadId) requestBody.message.threadId = params.threadId
@@ -1098,7 +955,7 @@ server.tool("delete_draft",
     id: z.string().describe("The ID of the draft to delete")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/drafts/${params.id}`,
         {},
@@ -1115,7 +972,7 @@ server.tool("send_draft",
     id: z.string().describe("The ID of the draft to send")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/drafts/send',
         {},
@@ -1131,7 +988,7 @@ server.tool("get_auto_forwarding",
   "Get the auto-forwarding setting for the account",
   {},
   async () => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/autoForwarding'
       )
@@ -1148,7 +1005,7 @@ server.tool("update_auto_forwarding",
     disposition: z.enum(['leaveInInbox', 'archive', 'trash', 'markRead']).describe("The state in which to leave messages after auto-forwarding")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/autoForwarding',
         {},
@@ -1164,7 +1021,7 @@ server.tool("get_imap",
   "Get IMAP settings",
   {},
   async () => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/imap'
       )
@@ -1181,7 +1038,7 @@ server.tool("update_imap",
     maxFolderSize: z.number().optional().describe("An optional limit on the number of messages that an IMAP folder may contain")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/imap',
         {},
@@ -1197,7 +1054,7 @@ server.tool("get_pop",
   "Get POP settings",
   {},
   async () => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/pop'
       )
@@ -1213,7 +1070,7 @@ server.tool("update_pop",
     disposition: z.enum(['leaveInInbox', 'archive', 'trash', 'markRead']).describe("The action to be taken for messages after they are accessed via POP")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/pop',
         {},
@@ -1229,7 +1086,7 @@ server.tool("get_vacation",
   "Get vacation responder settings",
   {},
   async () => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/vacation'
       )
@@ -1250,7 +1107,7 @@ server.tool("update_vacation",
     endTime: z.string().optional().describe("End time for sending auto-replies (epoch ms)")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/vacation',
         {},
@@ -1266,7 +1123,7 @@ server.tool("get_language",
   "Get language settings",
   {},
   async () => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/language'
       )
@@ -1281,7 +1138,7 @@ server.tool("update_language",
     displayLanguage: z.string().describe("The language to display Gmail in, formatted as an RFC 3066 Language Tag")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/language',
         {},
@@ -1297,7 +1154,7 @@ server.tool("list_delegates",
   "Lists the delegates for the specified account",
   {},
   async () => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/delegates'
       )
@@ -1312,7 +1169,7 @@ server.tool("get_delegate",
     delegateEmail: z.string().describe("The email address of the delegate to retrieve")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/delegates/${params.delegateEmail}`
       )
@@ -1327,7 +1184,7 @@ server.tool("add_delegate",
     delegateEmail: z.string().describe("Email address of delegate to add")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/delegates',
         {},
@@ -1345,7 +1202,7 @@ server.tool("remove_delegate",
     delegateEmail: z.string().describe("Email address of delegate to remove")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/delegates/${params.delegateEmail}`,
         {},
@@ -1360,7 +1217,7 @@ server.tool("list_filters",
   "Lists the message filters of a Gmail user",
   {},
   async () => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/filters'
       )
@@ -1375,7 +1232,7 @@ server.tool("get_filter",
     id: z.string().describe("The ID of the filter to be fetched")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/filters/${params.id}`
       )
@@ -1405,7 +1262,7 @@ server.tool("create_filter",
     }).describe("Actions to perform on messages matching the criteria")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/filters',
         {},
@@ -1423,7 +1280,7 @@ server.tool("delete_filter",
     id: z.string().describe("The ID of the filter to be deleted")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/filters/${params.id}`,
         {},
@@ -1438,7 +1295,7 @@ server.tool("list_forwarding_addresses",
   "Lists the forwarding addresses for the specified account",
   {},
   async () => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/forwardingAddresses'
       )
@@ -1453,7 +1310,7 @@ server.tool("create_forwarding_address",
     forwardingEmail: z.string().describe("An email address to which messages can be forwarded")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/forwardingAddresses',
         {},
@@ -1471,7 +1328,7 @@ server.tool("get_forwarding_address",
     forwardingEmail: z.string().describe("The forwarding address to be retrieved")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/forwardingAddresses/${params.forwardingEmail}`
       )
@@ -1486,7 +1343,7 @@ server.tool("delete_forwarding_address",
     forwardingEmail: z.string().describe("The forwarding address to be deleted")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/forwardingAddresses/${params.forwardingEmail}`,
         {},
@@ -1501,7 +1358,7 @@ server.tool("list_send_as",
   "Lists the send-as aliases for the specified account",
   {},
   async () => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/sendAs'
       )
@@ -1516,7 +1373,7 @@ server.tool("get_send_as",
     sendAsEmail: z.string().describe("The send-as alias to be retrieved")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/sendAs/${params.sendAsEmail}`
       )
@@ -1536,7 +1393,7 @@ server.tool("create_send_as",
     treatAsAlias: z.boolean().optional().describe("Whether Gmail should treat this address as an alias")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/settings/sendAs',
         {},
@@ -1560,7 +1417,7 @@ server.tool("update_send_as",
   },
   async (params) => {
     const { sendAsEmail, ...updateData } = params
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/sendAs/${sendAsEmail}`,
         {},
@@ -1584,7 +1441,7 @@ server.tool("patch_send_as",
   },
   async (params) => {
     const { sendAsEmail, ...patchData } = params
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/sendAs/${sendAsEmail}`,
         {},
@@ -1602,7 +1459,7 @@ server.tool("verify_send_as",
     sendAsEmail: z.string().describe("The send-as alias to be verified")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/sendAs/${params.sendAsEmail}/verify`,
         {},
@@ -1619,7 +1476,7 @@ server.tool("delete_send_as",
     sendAsEmail: z.string().describe("The send-as alias to be deleted")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/sendAs/${params.sendAsEmail}`,
         {},
@@ -1636,7 +1493,7 @@ server.tool("list_smime_info",
     sendAsEmail: z.string().describe("The email address that appears in the 'From:' header")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/sendAs/${params.sendAsEmail}/smimeInfo`
       )
@@ -1652,7 +1509,7 @@ server.tool("get_smime_info",
     id: z.string().describe("The immutable ID for the S/MIME config")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/sendAs/${params.sendAsEmail}/smimeInfo/${params.id}`
       )
@@ -1669,7 +1526,7 @@ server.tool("insert_smime_info",
     pkcs12: z.string().describe("PKCS#12 format containing a single private/public key pair and certificate chain")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/sendAs/${params.sendAsEmail}/smimeInfo`,
         {},
@@ -1688,7 +1545,7 @@ server.tool("set_default_smime_info",
     id: z.string().describe("The immutable ID for the S/MIME config")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/sendAs/${params.sendAsEmail}/smimeInfo/${params.id}/setDefault`,
         {},
@@ -1706,7 +1563,7 @@ server.tool("delete_smime_info",
     id: z.string().describe("The immutable ID for the S/MIME config")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/settings/sendAs/${params.sendAsEmail}/smimeInfo/${params.id}`,
         {},
@@ -1729,7 +1586,7 @@ server.tool("list_history",
     headersList: z.array(z.string()).optional().describe("List of headers to include in the return")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/history',
         {
@@ -1770,7 +1627,7 @@ server.tool("get_profile",
   "Get the current user's Gmail profile",
   {},
   async () => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/profile'
       )
@@ -1783,7 +1640,7 @@ server.tool("stop_mail_watch",
   "Stop receiving push notifications for the given user mailbox",
   {},
   async () => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/stop',
         {},
@@ -1802,7 +1659,7 @@ server.tool("watch_mailbox",
     labelFilterAction: z.enum(['include', 'exclude']).optional().describe("Whether to include or exclude the specified labels")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/watch',
         {},
@@ -1821,7 +1678,7 @@ server.tool("get_attachment",
     id: z.string().describe("The ID of the attachment"),
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/messages/${params.messageId}/attachments/${params.id}`
       )
@@ -1836,7 +1693,7 @@ server.tool("delete_message",
     id: z.string().describe("The ID of the message to delete")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         `/users/me/messages/${params.id}`,
         {},
@@ -1859,7 +1716,7 @@ server.tool("import_message",
     includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/messages/import',
         {},
@@ -1897,7 +1754,7 @@ server.tool("insert_message",
     includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
   },
   async (params) => {
-    return handleEndpoint(async () => {
+    return handleTool(async () => {
       const data = await callEndpoint(
         '/users/me/messages',
         {},
