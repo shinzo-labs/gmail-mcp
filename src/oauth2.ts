@@ -1,5 +1,5 @@
-import { GMAIL_CREDENTIALS_PATH, GMAIL_OAUTH_PATH } from "./config"
-import { logger } from "./logger"
+import { GMAIL_CREDENTIALS_PATH, GMAIL_OAUTH_PATH } from "./config.js"
+import { logger } from "./logger.js"
 import { OAuth2Client } from "google-auth-library"
 import fs from "fs"
 import http from "http"

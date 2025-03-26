@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp"
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio"
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod"
 import { google, gmail_v1 } from 'googleapis'
-import { logger } from "./logger"
-import { createOAuth2Client, launchAuthServer, validateCredentials } from "./oauth2"
+import { logger } from "./logger.js"
+import { createOAuth2Client, launchAuthServer, validateCredentials } from "./oauth2.js"
 
 type Draft = gmail_v1.Schema$Draft
 type DraftCreateParams = gmail_v1.Params$Resource$Users$Drafts$Create

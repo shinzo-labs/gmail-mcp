@@ -1,4 +1,4 @@
-import { LOG_PATH } from "./config"
+import { LOG_PATH } from "./config.js"
 import fs from "fs"
 
 type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error'
