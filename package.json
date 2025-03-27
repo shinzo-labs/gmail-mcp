@@ -1,6 +1,6 @@
 {
   "name": "@shinzolabs/gmail-mcp",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Gmail MCP - Provides Gmail API access with file-based OAuth2 authentication",
   "type": "module",
   "bin": {
