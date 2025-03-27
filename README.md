@@ -54,9 +54,9 @@ Add the following to your `claude_desktop_config.json`:
 git clone https://github.com/shinzo-labs/gmail-mcp.git
 ```
 
-2. Install packages (inside cloned repo):
+2. Install packages and build (inside cloned repo):
 ```bash
-pnpm i
+pnpm i && pnpm run build
 ```
 
 3. Add the following to your `claude_desktop_config.json`:
@@ -95,7 +95,7 @@ The MCP provides an automated authentication flow:
 npx @shinzolabs/gmail-mcp auth
 
 # If in the project directory
-pnpm run auth
+pnpm i && pnpm run build && pnpm run auth
 ```
 
 3. A browser window will automatically open to the Google OAuth consent screen

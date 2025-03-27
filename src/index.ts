@@ -38,7 +38,7 @@ const RESPONSE_HEADERS_LIST = [
   'References'
 ]
 
-const oauth2Client = createOAuth2Client()
+  const oauth2Client = createOAuth2Client()
 
 const server = new McpServer({
   name: "Gmail-MCP",
@@ -133,10 +133,10 @@ const getQuotedContent = (thread: Thread) => {
   if (lastMessage.payload.headers) {
     const fromHeader = findHeader(lastMessage.payload.headers || [], 'from')
     const dateHeader = findHeader(lastMessage.payload.headers || [], 'date')  
-    if (fromHeader && dateHeader) {
-      quotedContent.push('')
-      quotedContent.push(`On ${dateHeader} ${fromHeader} wrote:`)
-      quotedContent.push('')
+  if (fromHeader && dateHeader) {
+    quotedContent.push('')
+    quotedContent.push(`On ${dateHeader} ${fromHeader} wrote:`)
+    quotedContent.push('')
     }
   }
 
@@ -210,7 +210,7 @@ const constructRawMessage = async (params: NewMessage) => {
   message.push('Content-Transfer-Encoding: quoted-printable')
   message.push('MIME-Version: 1.0')
   message.push('')
-  
+
   if (params.body) message.push(wrapTextBody(params.body))
 
   if (thread) {
@@ -344,7 +344,7 @@ server.tool("send_draft",
     return handleTool(async () => {
       try {
         const { data } = await gmail.users.drafts.send({ userId: 'me', requestBody: { id: params.id } })
-        return formatResponse(data)
+      return formatResponse(data)
       } catch (error) {
         logger('error', 'Error sending draft', { error })
         return formatResponse({ error: 'Error sending draft, are you sure you have at least one recipient?' })
@@ -574,15 +574,15 @@ server.tool("list_messages",
 
       if (data.messages) {
         data.messages = data.messages.map((message: Message) => {
-          if (message.payload) {
+              if (message.payload) {
             message.payload = processMessagePart(
-              message.payload,
-              params.includeBodyHtml
-            )
+                  message.payload,
+                  params.includeBodyHtml
+                )
+              }
+              return message
+            })
           }
-          return message
-        })
-      }
 
       return formatResponse(data)
     })
@@ -738,8 +738,8 @@ server.tool("list_threads",
               if (message.payload) {
                 message.payload = processMessagePart(
                   message.payload,
-                  params.includeBodyHtml
-                )
+          params.includeBodyHtml
+        )
               }
               return message
             })
@@ -1309,8 +1309,8 @@ const main = async () => {
     await launchAuthServer(oauth2Client)
     process.exit(0)
   }
-  const transport = new StdioServerTransport()
-  await server.connect(transport)
+const transport = new StdioServerTransport()
+await server.connect(transport)
 }
 
 main()
