@@ -3,6 +3,7 @@ FROM node:lts-alpine
 WORKDIR /app
 
 ENV NODE_OPTIONS="--max-old-space-size=4096"
+ENV HOME="/home/node"
 
 RUN npm install -g pnpm
 
@@ -17,8 +18,9 @@ RUN pnpm run build
 
 USER node
 
-# Create logging directory
+# Create logging directory with proper ownership
 RUN mkdir -p /home/node/.gmail-mcp
-RUN chmod 755 /home/node/.gmail-mcp
+RUN chown -R node:node /home/node/.gmail-mcp
+RUN chmod -R 755 /home/node/.gmail-mcp
 
 ENTRYPOINT ["pnpm", "run", "start"]
