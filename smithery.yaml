@@ -5,25 +5,21 @@ startCommand:
   configSchema:
     # JSON Schema defining the configuration options for the MCP.
     type: object
-    required:
-      - clientId
-      - clientSecret
-      - refreshToken
     properties:
       clientId:
         type: string
-        description: OAuth2 client ID
+        description: OAuth2 client ID, optional if using credentials file
       clientSecret:
         type: string
-        description: OAuth2 client Secret
+        description: OAuth2 client Secret, optional if using credentials file
       refreshToken:
         type: string
-        description: Refresh token
+        description: Refresh token, optional if using credentials file
   commandFunction:
     |-
     (config) => ({
-      command: 'npm',
-      args: ['start'],
+      command: 'node',
+      args: ['dist/index.js'],
       env: {
         CLIENT_ID: config.clientId,
         CLIENT_SECRET: config.clientSecret,
