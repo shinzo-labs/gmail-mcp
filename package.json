@@ -9,8 +9,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "NODE_NO_WARNINGS=1 node ./dist/index.js",
-    "auth": "NODE_NO_WARNINGS=1 node ./dist/index.js auth",
-    "prepare": "npm run build"
+    "auth": "NODE_NO_WARNINGS=1 node ./dist/index.js auth"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

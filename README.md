@@ -73,7 +73,15 @@ pnpm i
 }
 ```
 
-### Authentication Flow
+### Smithery
+
+To install for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@shinzo-labs/gmail-mcp):
+
+```bash
+npx -y @smithery/cli install @shinzo-labs/gmail-mcp --client claude
+```
+
+## Authentication Flow
 
 The MCP provides an automated authentication flow:
 
@@ -104,14 +112,6 @@ You can customize the credential file locations using environment variables:
 ```bash
 GMAIL_OAUTH_PATH=/custom/path/to/gcp-oauth.keys.json
 GMAIL_CREDENTIALS_PATH=/custom/path/to/credentials.json
-```
-
-### Smithery
-
-To install for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@shinzo-labs/gmail-mcp):
-
-```bash
-npx -y @smithery/cli install @shinzo-labs/gmail-mcp --client claude
 ```
 
 ## Supported Endpoints
