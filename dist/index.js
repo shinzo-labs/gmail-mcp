@@ -17,7 +17,7 @@ const RESPONSE_HEADERS_LIST = [
 const oauth2Client = createOAuth2Client();
 const server = new McpServer({
     name: "Gmail-MCP",
-    version: "1.0.0",
+    version: "1.0.1",
     description: "An expansive MCP for the Gmail API"
 });
 const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
