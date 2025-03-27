@@ -1,5 +1,9 @@
 # Gmail MCP
 
+<div style="background-color: #ff4d4d; color: white; padding: 15px; margin: 20px 0; border-radius: 5px; font-size: 18px; text-align: center;">
+⚠️ <strong>WARNING:</strong> This server is experimental and functionality is not guaranteed. Please use at your own risk.
+</div>
+
 [![npm version](https://badge.fury.io/js/@shinzolabs%2Fgmail-mcp.svg)](https://badge.fury.io/js/@shinzolabs%2Fgmail-mcp)
 [![smithery badge](https://smithery.ai/badge/@shinzo-labs/gmail-mcp)](https://smithery.ai/server/@shinzo-labs/gmail-mcp)
 
