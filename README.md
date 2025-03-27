@@ -135,17 +135,12 @@ export REFRESH_TOKEN=your-refresh-token
 
 ### Message Management
 
-#### Sending and Creating Messages
-- `draft_email`: Creates a draft email message
-- `send_email`: Sends an email message
-- `import_message`: Import a message into the mailbox
-- `insert_message`: Insert a message into the mailbox
-
 #### Managing Messages
 - `list_messages`: List messages with optional filtering
 - `get_message`: Get a specific message
 - `get_attachment`: Get a message attachment
 - `modify_message`: Modify message labels
+- `send_message`: Send an email message to specified recipients
 - `delete_message`: Permanently delete a message
 - `trash_message`: Move message to trash
 - `untrash_message`: Remove message from trash
@@ -169,9 +164,10 @@ export REFRESH_TOKEN=your-refresh-token
 - `delete_thread`: Delete a thread
 
 ### Draft Management
-- `list_drafts`: List all drafts
-- `get_draft`: Get a specific draft
-- `update_draft`: Update draft content
+- `list_drafts`: List drafts in the user's mailbox
+- `get_draft`: Get a specific draft by ID
+- `create_draft`: Create a draft email in Gmail
+- `update_draft`: Replace a draft's content
 - `delete_draft`: Delete a draft
 - `send_draft`: Send an existing draft
 
@@ -230,9 +226,6 @@ export REFRESH_TOKEN=your-refresh-token
 - `insert_smime_info`: Upload a new S/MIME config
 - `set_default_smime_info`: Set default S/MIME config
 - `delete_smime_info`: Delete an S/MIME config
-
-### History
-- `list_history`: Track changes to the mailbox
 
 ## Contributing
 
