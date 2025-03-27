@@ -1,4 +1,4 @@
-import { GMAIL_CREDENTIALS_PATH, GMAIL_OAUTH_PATH } from "./config.js"
+import { AUTH_SERVER_PORT, GMAIL_CREDENTIALS_PATH, GMAIL_OAUTH_PATH } from "./config.js"
 import { logger } from "./logger.js"
 import { OAuth2Client } from "google-auth-library"
 import fs from "fs"
@@ -47,7 +47,7 @@ export const createOAuth2Client = () => {
     const oauth2Client = new OAuth2Client({
       clientId: keys.installed.client_id,
       clientSecret: keys.installed.client_secret,
-      redirectUri: 'http://localhost:3000/oauth2callback'
+      redirectUri: `http://localhost:${AUTH_SERVER_PORT}/oauth2callback`
     })
 
     if (fs.existsSync(GMAIL_CREDENTIALS_PATH)) {
@@ -68,7 +68,7 @@ export const createOAuth2Client = () => {
 
 export const launchAuthServer = async (oauth2Client: OAuth2Client) => new Promise((resolve, reject) => {
   const server = http.createServer()
-  server.listen(3000)
+  server.listen(AUTH_SERVER_PORT)
 
   const authUrl = oauth2Client.generateAuthUrl({ access_type: 'offline', scope: AUTH_SCOPES })
 
@@ -79,7 +79,7 @@ export const launchAuthServer = async (oauth2Client: OAuth2Client) => new Promis
   server.on('request', async (req, res) => {
     if (!req.url?.startsWith('/oauth2callback')) return
 
-    const url = new URL(req.url, 'http://localhost:3000')
+    const url = new URL(req.url, `http://localhost:${AUTH_SERVER_PORT}`)
     const code = url.searchParams.get('code')
 
     if (!code) {

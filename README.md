@@ -85,9 +85,9 @@ npx -y @smithery/cli install @shinzo-labs/gmail-mcp --client claude
 
 The MCP provides an automated authentication flow:
 
-1. First, ensure you have your OAuth credentials:
-   - Place the downloaded `credentials.json` in `~/.gmail-mcp/gcp-oauth.keys.json`
-   - Or set `GMAIL_OAUTH_PATH` to point to your credentials file
+1. First, acquire OAuth credentials and download the JSON file.
+
+2. Rename the JSON file to `gcp-oauth.keys.json` and copy it to `$HOME/.gmail-mcp/`, or wherever you've set it in `MCP_CONFIG_DIR` (ex. `$HOME/logs/.shinzo-gmail-mcp`)
 
 2. Run the authentication command:
 ```bash
@@ -108,10 +108,11 @@ The MCP will automatically:
 - Handle the OAuth callback
 - Open the authentication URL in your default browser
 
-You can customize the credential file locations using environment variables:
+Note: by default this server uses port `3000` to listen for the OAuth response. You can set `AUTH_SERVER_PORT` to something else if you are running another service on `3000`.
+
+You can customize the config location by setting `MCP_CONFIG_DIR` before running the command (optional):
 ```bash
-GMAIL_OAUTH_PATH=/custom/path/to/gcp-oauth.keys.json
-GMAIL_CREDENTIALS_PATH=/custom/path/to/credentials.json
+export MCP_CONFIG_DIR=/custom/path/to/directory/
 ```
 
 ## Supported Endpoints
