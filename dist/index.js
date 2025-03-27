@@ -5,7 +5,7 @@ import { z } from "zod";
 import { google } from 'googleapis';
 import { logger } from "./logger.js";
 import { createOAuth2Client, launchAuthServer, validateCredentials } from "./oauth2.js";
-const DEFAULT_HEADERS_LIST = [
+const RESPONSE_HEADERS_LIST = [
     'Date',
     'From',
     'To',
@@ -21,9 +21,7 @@ const server = new McpServer({
     description: "An expansive MCP for the Gmail API"
 });
 const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-const formatResponse = (response) => ({
-    content: [{ type: "text", text: JSON.stringify(response) }]
-});
+const formatResponse = (response) => ({ content: [{ type: "text", text: JSON.stringify(response) }] });
 const handleTool = async (apiCall) => {
     logger('info', 'Starting tool handler');
     try {
@@ -52,15 +50,15 @@ const decodedBody = (body) => {
     logger('debug', 'Decoded body', decodedBody);
     return decodedBody;
 };
-const processMessagePart = (messagePart, headersList = DEFAULT_HEADERS_LIST, includeBodyHtml = false) => {
+const processMessagePart = (messagePart, includeBodyHtml = false) => {
     if ((messagePart.mimeType !== 'text/html' || includeBodyHtml) && messagePart.body) {
         messagePart.body = decodedBody(messagePart.body);
     }
     if (messagePart.parts) {
-        messagePart.parts = messagePart.parts.map(part => processMessagePart(part, headersList, includeBodyHtml));
+        messagePart.parts = messagePart.parts.map(part => processMessagePart(part, includeBodyHtml));
     }
     if (messagePart.headers) {
-        messagePart.headers = messagePart.headers.filter(header => headersList.includes(header.name || ''));
+        messagePart.headers = messagePart.headers.filter(header => RESPONSE_HEADERS_LIST.includes(header.name || ''));
     }
     return messagePart;
 };
@@ -69,8 +67,7 @@ const getNestedHistory = (messagePart, level = 1) => {
         const { data } = decodedBody(messagePart.body);
         if (!data)
             return '';
-        const prefix = '>' + ' '.repeat(level);
-        return data.split('\n').map(line => prefix + (line.startsWith('>') ? '' : ' ') + line).join('\n');
+        return data.split('\n').map(line => '>' + (line.startsWith('>') ? '' : ' ') + line).join('\n');
     }
     return (messagePart.parts || []).map(p => getNestedHistory(p, level + 1)).filter(p => p).join('\n');
 };
@@ -98,7 +95,7 @@ const getQuotedContent = (thread) => {
     const nestedHistory = getNestedHistory(lastMessage.payload);
     if (nestedHistory) {
         quotedContent.push(nestedHistory);
-        quotedContent.push(''); // Add extra newline for spacing between quotes
+        quotedContent.push('');
     }
     return quotedContent.join('\n');
 };
@@ -127,6 +124,12 @@ const getThreadHeaders = (thread) => {
         headers.push(`References: ${references.join(' ')}`);
     return headers;
 };
+const wrapTextBody = (text) => text.split('\n').map(line => {
+    if (line.length <= 76)
+        return line;
+    const chunks = line.match(/.{1,76}/g) || [];
+    return chunks.join('=\n');
+}).join('\n');
 const constructRawMessage = async (params) => {
     logger('debug', 'Constructing raw email message', { params });
     let thread = null;
@@ -137,45 +140,45 @@ const constructRawMessage = async (params) => {
     }
     const message = [];
     if (params.to?.length)
-        message.push(`To: ${params.to.join(', ')}`);
+        message.push(`To: ${wrapTextBody(params.to.join(', '))}`);
     if (params.cc?.length)
-        message.push(`Cc: ${params.cc.join(', ')}`);
+        message.push(`Cc: ${wrapTextBody(params.cc.join(', '))}`);
     if (params.bcc?.length)
-        message.push(`Bcc: ${params.bcc.join(', ')}`);
+        message.push(`Bcc: ${wrapTextBody(params.bcc.join(', '))}`);
     if (thread) {
-        message.push(...getThreadHeaders(thread));
+        message.push(...getThreadHeaders(thread).map(header => wrapTextBody(header)));
     }
     else if (params.subject) {
-        message.push(`Subject: ${params.subject}`);
+        message.push(`Subject: ${wrapTextBody(params.subject)}`);
     }
     else {
         message.push('Subject: (No Subject)');
     }
     message.push('Content-Type: text/plain; charset="UTF-8"');
+    message.push('Content-Transfer-Encoding: quoted-printable');
     message.push('MIME-Version: 1.0');
     message.push('');
     if (params.body)
-        message.push(params.body);
-    if (thread)
-        message.push(getQuotedContent(thread));
+        message.push(wrapTextBody(params.body));
+    if (thread) {
+        const quotedContent = getQuotedContent(thread);
+        if (quotedContent) {
+            message.push('');
+            message.push(wrapTextBody(quotedContent));
+        }
+    }
     logger('debug', 'Constructed raw email message', { message });
-    return Buffer.from(message.join('\r\n')).toString('base64url').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); // TODO validate this
+    return Buffer.from(message.join('\r\n')).toString('base64url').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
-server.tool("create_draft", "Create a draft email in Gmail", {
-    raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format"),
+server.tool("create_draft", "Create a draft email in Gmail. Note the mechanics of the raw parameter.", {
+    raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format, ignores params.to, cc, bcc, subject, body, includeBodyHtml if provided"),
     threadId: z.string().optional().describe("The thread ID to associate this draft with"),
     to: z.array(z.string()).optional().describe("List of recipient email addresses"),
     cc: z.array(z.string()).optional().describe("List of CC recipient email addresses"),
     bcc: z.array(z.string()).optional().describe("List of BCC recipient email addresses"),
     subject: z.string().optional().describe("The subject of the email"),
     body: z.string().optional().describe("The body of the email"),
-    attachments: z.array(z.object({
-        filename: z.string(),
-        data: z.string(),
-        mimeType: z.string()
-    })).optional().describe("Array of attachments"),
-    headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
-    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
 }, async (params) => {
     return handleTool(async () => {
         let raw = params.raw;
@@ -187,7 +190,7 @@ server.tool("create_draft", "Create a draft email in Gmail", {
         }
         const { data } = await gmail.users.drafts.create(draftCreateParams);
         if (data.message?.payload) {
-            data.message.payload = processMessagePart(data.message.payload, params.headersList, params.includeBodyHtml);
+            data.message.payload = processMessagePart(data.message.payload, params.includeBodyHtml);
         }
         return formatResponse(data);
     });
@@ -202,13 +205,12 @@ server.tool("delete_draft", "Delete a draft", {
 });
 server.tool("get_draft", "Get a specific draft by ID", {
     id: z.string().describe("The ID of the draft to retrieve"),
-    headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
-    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
 }, async (params) => {
     return handleTool(async () => {
         const { data } = await gmail.users.drafts.get({ userId: 'me', id: params.id, format: 'full' });
         if (data.message?.payload) {
-            data.message.payload = processMessagePart(data.message.payload, params.headersList, params.includeBodyHtml);
+            data.message.payload = processMessagePart(data.message.payload, params.includeBodyHtml);
         }
         return formatResponse(data);
     });
@@ -217,8 +219,7 @@ server.tool("list_drafts", "List drafts in the user's mailbox", {
     maxResults: z.number().optional().describe("Maximum number of drafts to return. Accepts values between 1-500"),
     q: z.string().optional().describe("Only return drafts matching the specified query. Supports the same query format as the Gmail search box"),
     includeSpamTrash: z.boolean().optional().describe("Include drafts from SPAM and TRASH in the results"),
-    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large"),
-    headersList: z.array(z.string()).optional().describe("List of headers to include in the return")
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large"),
 }, async (params) => {
     return handleTool(async () => {
         let drafts = [];
@@ -231,7 +232,7 @@ server.tool("list_drafts", "List drafts in the user's mailbox", {
         if (drafts) {
             drafts = drafts.map(draft => {
                 if (draft.message?.payload) {
-                    draft.message.payload = processMessagePart(draft.message.payload, params.headersList, params.includeBodyHtml);
+                    draft.message.payload = processMessagePart(draft.message.payload, params.includeBodyHtml);
                 }
                 return draft;
             });
@@ -247,34 +248,32 @@ server.tool("send_draft", "Send an existing draft", {
         return formatResponse(data);
     });
 });
-server.tool("update_draft", "Replace a draft's content", {
+server.tool("update_draft", "Replace a draft's content. Note the mechanics of the threadId and raw parameters.", {
     id: z.string().describe("The ID of the draft to update"),
-    raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format"),
-    threadId: z.string().optional().describe("The thread ID to associate this draft with"),
+    threadId: z.string().optional().describe("The thread ID to associate this draft with, will be copied from the current draft if not provided"),
+    raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format, ignores params.to, cc, bcc, subject, body, includeBodyHtml if provided"),
     to: z.array(z.string()).optional().describe("List of recipient email addresses"),
     cc: z.array(z.string()).optional().describe("List of CC recipient email addresses"),
     bcc: z.array(z.string()).optional().describe("List of BCC recipient email addresses"),
     subject: z.string().optional().describe("The subject of the email"),
     body: z.string().optional().describe("The body of the email"),
-    attachments: z.array(z.object({
-        filename: z.string(),
-        data: z.string(),
-        mimeType: z.string()
-    })).optional().describe("Array of attachments"),
-    headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
-    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
 }, async (params) => {
     return handleTool(async () => {
         let raw = params.raw;
+        const currentDraft = await gmail.users.drafts.get({ userId: 'me', id: params.id, format: 'full' });
+        if (currentDraft.data.message?.threadId) {
+            params.threadId = currentDraft.data.message.threadId;
+        }
         if (!raw)
             raw = await constructRawMessage(params);
-        const draftUpdateParams = { userId: 'me', id: params.id, requestBody: { message: { raw } } };
+        const draftUpdateParams = { userId: 'me', id: params.id, requestBody: { message: { raw, id: params.id } } };
         if (params.threadId && draftUpdateParams.requestBody?.message) {
             draftUpdateParams.requestBody.message.threadId = params.threadId;
         }
         const { data } = await gmail.users.drafts.update(draftUpdateParams);
         if (data.message?.payload) {
-            data.message.payload = processMessagePart(data.message.payload, params.headersList, params.includeBodyHtml);
+            data.message.payload = processMessagePart(data.message.payload, params.includeBodyHtml);
         }
         return formatResponse(data);
     });
@@ -375,13 +374,12 @@ server.tool("delete_message", "Immediately and permanently delete a message", {
 });
 server.tool("get_message", "Get a specific message by ID with format options", {
     id: z.string().describe("The ID of the message to retrieve"),
-    headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
-    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
 }, async (params) => {
     return handleTool(async () => {
         const { data } = await gmail.users.messages.get({ userId: 'me', id: params.id, format: 'full' });
         if (data.payload) {
-            data.payload = processMessagePart(data.payload, params.headersList, params.includeBodyHtml);
+            data.payload = processMessagePart(data.payload, params.includeBodyHtml);
         }
         return formatResponse(data);
     });
@@ -392,15 +390,14 @@ server.tool("list_messages", "List messages in the user's mailbox with optional 
     q: z.string().optional().describe("Only return messages matching the specified query. Supports the same query format as the Gmail search box"),
     labelIds: z.array(z.string()).optional().describe("Only return messages with labels that match all of the specified label IDs"),
     includeSpamTrash: z.boolean().optional().describe("Include messages from SPAM and TRASH in the results"),
-    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large"),
-    headersList: z.array(z.string()).optional().describe("List of headers to include in the return")
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large"),
 }, async (params) => {
     return handleTool(async () => {
         const { data } = await gmail.users.messages.list({ userId: 'me', ...params });
         if (data.messages) {
             data.messages = data.messages.map((message) => {
                 if (message.payload) {
-                    message.payload = processMessagePart(message.payload, params.headersList, params.includeBodyHtml);
+                    message.payload = processMessagePart(message.payload, params.includeBodyHtml);
                 }
                 return message;
             });
@@ -418,21 +415,15 @@ server.tool("modify_message", "Modify the labels on a message", {
         return formatResponse(data);
     });
 });
-server.tool("send_message", "Send an email message to specified recipients", {
-    raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format"),
+server.tool("send_message", "Send an email message to specified recipients. Note the mechanics of the raw parameter.", {
+    raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format, ignores params.to, cc, bcc, subject, body, includeBodyHtml if provided"),
     threadId: z.string().optional().describe("The thread ID to associate this message with"),
     to: z.array(z.string()).optional().describe("List of recipient email addresses"),
     cc: z.array(z.string()).optional().describe("List of CC recipient email addresses"),
     bcc: z.array(z.string()).optional().describe("List of BCC recipient email addresses"),
     subject: z.string().optional().describe("The subject of the email"),
     body: z.string().optional().describe("The body of the email"),
-    attachments: z.array(z.object({
-        filename: z.string(),
-        data: z.string(),
-        mimeType: z.string()
-    })).optional().describe("Array of attachments"),
-    headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
-    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
 }, async (params) => {
     return handleTool(async () => {
         let raw = params.raw;
@@ -444,7 +435,7 @@ server.tool("send_message", "Send an email message to specified recipients", {
         }
         const { data } = await gmail.users.messages.send(messageSendParams);
         if (data.payload) {
-            data.payload = processMessagePart(data.payload, params.headersList, params.includeBodyHtml);
+            data.payload = processMessagePart(data.payload, params.includeBodyHtml);
         }
         return formatResponse(data);
     });
@@ -484,15 +475,14 @@ server.tool("delete_thread", "Delete a thread", {
 });
 server.tool("get_thread", "Get a specific thread by ID", {
     id: z.string().describe("The ID of the thread to retrieve"),
-    headersList: z.array(z.string()).optional().describe("List of headers to include in the return"),
-    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large")
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
 }, async (params) => {
     return handleTool(async () => {
         const { data } = await gmail.users.threads.get({ userId: 'me', id: params.id, format: 'full' });
         if (data.messages) {
             data.messages = data.messages.map(message => {
                 if (message.payload) {
-                    message.payload = processMessagePart(message.payload, params.headersList, params.includeBodyHtml);
+                    message.payload = processMessagePart(message.payload, params.includeBodyHtml);
                 }
                 return message;
             });
@@ -506,8 +496,7 @@ server.tool("list_threads", "List threads in the user's mailbox", {
     q: z.string().optional().describe("Only return threads matching the specified query"),
     labelIds: z.array(z.string()).optional().describe("Only return threads with labels that match all of the specified label IDs"),
     includeSpamTrash: z.boolean().optional().describe("Include threads from SPAM and TRASH in the results"),
-    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return each body, excluded by default because they can be excessively large"),
-    headersList: z.array(z.string()).optional().describe("List of headers to include in the return")
+    includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large"),
 }, async (params) => {
     return handleTool(async () => {
         const { data } = await gmail.users.threads.list({ userId: 'me', ...params });
@@ -516,7 +505,7 @@ server.tool("list_threads", "List threads in the user's mailbox", {
                 if (thread.messages) {
                     thread.messages = thread.messages.map(message => {
                         if (message.payload) {
-                            message.payload = processMessagePart(message.payload, params.headersList, params.includeBodyHtml);
+                            message.payload = processMessagePart(message.payload, params.includeBodyHtml);
                         }
                         return message;
                     });
