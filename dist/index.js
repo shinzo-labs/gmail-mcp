@@ -73,13 +73,22 @@ const getNestedHistory = (messagePart, level = 1) => {
 };
 const findHeader = (headers, name) => {
     if (!headers || !Array.isArray(headers) || !name)
-        return null;
-    return headers.find(h => h?.name?.toLowerCase() === name.toLowerCase())?.value;
+        return undefined;
+    return headers.find(h => h?.name?.toLowerCase() === name.toLowerCase())?.value ?? undefined;
+};
+const formatEmailList = (emailList) => {
+    if (!emailList)
+        return [];
+    return emailList.split(',').map(email => email.trim());
 };
 const getQuotedContent = (thread) => {
     if (!thread.messages?.length)
         return '';
-    const lastMessage = thread.messages[thread.messages.length - 1];
+    const sentMessages = thread.messages.filter(msg => msg.labelIds?.includes('SENT') ||
+        (!msg.labelIds?.includes('DRAFT') && findHeader(msg.payload?.headers || [], 'date')));
+    if (!sentMessages.length)
+        return '';
+    const lastMessage = sentMessages[sentMessages.length - 1];
     if (!lastMessage?.payload)
         return '';
     let quotedContent = [];
@@ -244,27 +253,43 @@ server.tool("send_draft", "Send an existing draft", {
     id: z.string().describe("The ID of the draft to send")
 }, async (params) => {
     return handleTool(async () => {
-        const { data } = await gmail.users.drafts.send({ userId: 'me', requestBody: { id: params.id } });
-        return formatResponse(data);
+        try {
+            const { data } = await gmail.users.drafts.send({ userId: 'me', requestBody: { id: params.id } });
+            return formatResponse(data);
+        }
+        catch (error) {
+            logger('error', 'Error sending draft', { error });
+            return formatResponse({ error: 'Error sending draft, are you sure you have at least one recipient?' });
+        }
     });
 });
 server.tool("update_draft", "Replace a draft's content. Note the mechanics of the threadId and raw parameters.", {
     id: z.string().describe("The ID of the draft to update"),
     threadId: z.string().optional().describe("The thread ID to associate this draft with, will be copied from the current draft if not provided"),
     raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format, ignores params.to, cc, bcc, subject, body, includeBodyHtml if provided"),
-    to: z.array(z.string()).optional().describe("List of recipient email addresses"),
-    cc: z.array(z.string()).optional().describe("List of CC recipient email addresses"),
-    bcc: z.array(z.string()).optional().describe("List of BCC recipient email addresses"),
-    subject: z.string().optional().describe("The subject of the email"),
-    body: z.string().optional().describe("The body of the email"),
+    to: z.array(z.string()).optional().describe("List of recipient email addresses, will be copied from the current draft if not provided"),
+    cc: z.array(z.string()).optional().describe("List of CC recipient email addresses, will be copied from the current draft if not provided"),
+    bcc: z.array(z.string()).optional().describe("List of BCC recipient email addresses, will be copied from the current draft if not provided"),
+    subject: z.string().optional().describe("The subject of the email, will be copied from the current draft if not provided"),
+    body: z.string().optional().describe("The body of the email, will be copied from the current draft if not provided"),
     includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
 }, async (params) => {
     return handleTool(async () => {
         let raw = params.raw;
         const currentDraft = await gmail.users.drafts.get({ userId: 'me', id: params.id, format: 'full' });
-        if (currentDraft.data.message?.threadId) {
+        const { payload } = currentDraft.data.message ?? {};
+        if (currentDraft.data.message?.threadId && !params.threadId)
             params.threadId = currentDraft.data.message.threadId;
-        }
+        if (!params.to)
+            params.to = formatEmailList(findHeader(payload?.headers || [], 'to'));
+        if (!params.cc)
+            params.cc = formatEmailList(findHeader(payload?.headers || [], 'cc'));
+        if (!params.bcc)
+            params.bcc = formatEmailList(findHeader(payload?.headers || [], 'bcc'));
+        if (!params.subject)
+            params.subject = findHeader(payload?.headers || [], 'subject');
+        if (!params.body)
+            params.body = payload?.parts?.find(p => p.mimeType === 'text/plain')?.body?.data ?? undefined;
         if (!raw)
             raw = await constructRawMessage(params);
         const draftUpdateParams = { userId: 'me', id: params.id, requestBody: { message: { raw, id: params.id } } };

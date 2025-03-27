@@ -118,7 +118,14 @@ const formatEmailList = (emailList: string | null | undefined) => {
 const getQuotedContent = (thread: Thread) => {
   if (!thread.messages?.length) return ''
 
-  const lastMessage = thread.messages[thread.messages.length - 1]
+  const sentMessages = thread.messages.filter(msg => 
+    msg.labelIds?.includes('SENT') || 
+    (!msg.labelIds?.includes('DRAFT') && findHeader(msg.payload?.headers || [], 'date'))
+  )
+  
+  if (!sentMessages.length) return ''
+
+  const lastMessage = sentMessages[sentMessages.length - 1]
   if (!lastMessage?.payload) return ''
 
   let quotedContent = []
@@ -335,8 +342,13 @@ server.tool("send_draft",
   },
   async (params) => {
     return handleTool(async () => {
-      const { data } = await gmail.users.drafts.send({ userId: 'me', requestBody: { id: params.id } })
-      return formatResponse(data)
+      try {
+        const { data } = await gmail.users.drafts.send({ userId: 'me', requestBody: { id: params.id } })
+        return formatResponse(data)
+      } catch (error) {
+        logger('error', 'Error sending draft', { error })
+        return formatResponse({ error: 'Error sending draft, are you sure you have at least one recipient?' })
+      }
     })
   }
 )
@@ -361,6 +373,7 @@ server.tool("update_draft",
       const { payload } = currentDraft.data.message ?? {}
 
       if (currentDraft.data.message?.threadId && !params.threadId) params.threadId = currentDraft.data.message.threadId
+      if (!params.to) params.to = formatEmailList(findHeader(payload?.headers || [], 'to'))
       if (!params.cc) params.cc = formatEmailList(findHeader(payload?.headers || [], 'cc'))
       if (!params.bcc) params.bcc = formatEmailList(findHeader(payload?.headers || [], 'bcc'))
       if (!params.subject) params.subject = findHeader(payload?.headers || [], 'subject')
