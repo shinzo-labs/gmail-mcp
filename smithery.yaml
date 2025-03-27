@@ -1,0 +1,36 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+
+startCommand:
+  type: stdio
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    required:
+      - clientId
+      - clientSecret
+      - refreshToken
+    properties:
+      clientId:
+        type: string
+        description: OAuth2 client ID
+      clientSecret:
+        type: string
+        description: OAuth2 client Secret
+      refreshToken:
+        type: string
+        description: Refresh token
+  commandFunction:
+    |-
+    (config) => ({
+      command: 'npm',
+      args: ['start'],
+      env: {
+        CLIENT_ID: config.clientId,
+        CLIENT_SECRET: config.clientSecret,
+        REFRESH_TOKEN: config.refreshToken
+      }
+    })
+  exampleConfig:
+    clientId: your_client_id_here
+    clientSecret: your_client_secret_here
+    refreshToken: your_refresh_token_here
