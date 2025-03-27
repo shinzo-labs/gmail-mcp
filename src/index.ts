@@ -38,7 +38,7 @@ const RESPONSE_HEADERS_LIST = [
   'References'
 ]
 
-  const oauth2Client = createOAuth2Client()
+const oauth2Client = createOAuth2Client()
 
 const server = new McpServer({
   name: "Gmail-MCP",
@@ -118,25 +118,25 @@ const formatEmailList = (emailList: string | null | undefined) => {
 const getQuotedContent = (thread: Thread) => {
   if (!thread.messages?.length) return ''
 
-  const sentMessages = thread.messages.filter(msg => 
-    msg.labelIds?.includes('SENT') || 
+  const sentMessages = thread.messages.filter(msg =>
+    msg.labelIds?.includes('SENT') ||
     (!msg.labelIds?.includes('DRAFT') && findHeader(msg.payload?.headers || [], 'date'))
   )
-  
+
   if (!sentMessages.length) return ''
 
   const lastMessage = sentMessages[sentMessages.length - 1]
   if (!lastMessage?.payload) return ''
 
   let quotedContent = []
-  
+
   if (lastMessage.payload.headers) {
     const fromHeader = findHeader(lastMessage.payload.headers || [], 'from')
-    const dateHeader = findHeader(lastMessage.payload.headers || [], 'date')  
-  if (fromHeader && dateHeader) {
-    quotedContent.push('')
-    quotedContent.push(`On ${dateHeader} ${fromHeader} wrote:`)
-    quotedContent.push('')
+    const dateHeader = findHeader(lastMessage.payload.headers || [], 'date')
+    if (fromHeader && dateHeader) {
+      quotedContent.push('')
+      quotedContent.push(`On ${dateHeader} ${fromHeader} wrote:`)
+      quotedContent.push('')
     }
   }
 
@@ -156,7 +156,7 @@ const getThreadHeaders = (thread: Thread) => {
 
   const lastMessage = thread.messages[thread.messages.length - 1]
   const references: string[] = []
-  
+
   let subjectHeader = findHeader(lastMessage.payload?.headers || [], 'subject')
   if (subjectHeader) {
     if (!subjectHeader.toLowerCase().startsWith('re:')) {
@@ -344,7 +344,7 @@ server.tool("send_draft",
     return handleTool(async () => {
       try {
         const { data } = await gmail.users.drafts.send({ userId: 'me', requestBody: { id: params.id } })
-      return formatResponse(data)
+        return formatResponse(data)
       } catch (error) {
         logger('error', 'Error sending draft', { error })
         return formatResponse({ error: 'Error sending draft, are you sure you have at least one recipient?' })
@@ -574,15 +574,15 @@ server.tool("list_messages",
 
       if (data.messages) {
         data.messages = data.messages.map((message: Message) => {
-              if (message.payload) {
+          if (message.payload) {
             message.payload = processMessagePart(
-                  message.payload,
-                  params.includeBodyHtml
-                )
-              }
-              return message
-            })
+              message.payload,
+              params.includeBodyHtml
+            )
           }
+          return message
+        })
+      }
 
       return formatResponse(data)
     })
@@ -738,8 +738,8 @@ server.tool("list_threads",
               if (message.payload) {
                 message.payload = processMessagePart(
                   message.payload,
-          params.includeBodyHtml
-        )
+                  params.includeBodyHtml
+                )
               }
               return message
             })
@@ -946,7 +946,7 @@ server.tool("remove_delegate",
   },
   async (params) => {
     return handleTool(async () => {
-        const { data } = await gmail.users.settings.delegates.delete({ userId: 'me', delegateEmail: params.delegateEmail })
+      const { data } = await gmail.users.settings.delegates.delete({ userId: 'me', delegateEmail: params.delegateEmail })
       return formatResponse(data)
     })
   }
@@ -1309,8 +1309,8 @@ const main = async () => {
     await launchAuthServer(oauth2Client)
     process.exit(0)
   }
-const transport = new StdioServerTransport()
-await server.connect(transport)
+  const transport = new StdioServerTransport()
+  await server.connect(transport)
 }
 
 main()
