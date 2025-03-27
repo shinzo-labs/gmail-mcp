@@ -1,4 +1,4 @@
-import { AUTH_SERVER_PORT, GMAIL_CREDENTIALS_PATH, GMAIL_OAUTH_PATH } from "./config.js"
+import { AUTH_SERVER_PORT, CLIENT_ID, CLIENT_SECRET, GMAIL_CREDENTIALS_PATH, GMAIL_OAUTH_PATH, REFRESH_TOKEN } from "./config.js"
 import { logger } from "./logger.js"
 import { OAuth2Client } from "google-auth-library"
 import fs from "fs"
@@ -13,42 +13,46 @@ const AUTH_SCOPES = [
   'https://www.googleapis.com/auth/gmail.settings.sharing'
 ]
 
-type OAuthKeys = {
-  installed: {
-    client_id: string
-    client_secret: string
-    redirect_uris: string[]
-  }
-}
-
 export const createOAuth2Client = () => {
   try {
     logger('info', 'Starting OAuth2Client creation')
 
-    if (!fs.existsSync(GMAIL_OAUTH_PATH)) {
-      logger('error', `OAuth2 keys file not found at ${GMAIL_OAUTH_PATH}`)
+    const oauthFilePresent = fs.existsSync(GMAIL_OAUTH_PATH)
+    const credentialsFoundInEnv = (CLIENT_ID && CLIENT_SECRET && REFRESH_TOKEN)
+
+    if (!credentialsFoundInEnv && !oauthFilePresent) {
+      logger('error', 'Missing required environment variables or credentials file, see README for details.')
       process.exit(1)
     }
 
-    let parsedKeys: any
+    let clientId: string
+    let clientSecret: string
 
-    const keysContent = fs.readFileSync(GMAIL_OAUTH_PATH, 'utf8')
-    parsedKeys = JSON.parse(keysContent)
+    if (oauthFilePresent) {
+      const keysContent = fs.readFileSync(GMAIL_OAUTH_PATH, 'utf8')
+      const parsedKeys = JSON.parse(keysContent)
 
-    if (!parsedKeys?.installed.client_id || !parsedKeys.installed.client_secret) {
-      logger('error', 'Invalid OAuth keys format', parsedKeys)
-      process.exit(1)
+      if (!parsedKeys?.installed.client_id || !parsedKeys.installed.client_secret) {
+        logger('error', 'Invalid OAuth keys format', parsedKeys)
+        process.exit(1)
+      }
+
+      clientId = parsedKeys.installed.client_id
+      clientSecret = parsedKeys.installed.client_secret
+    } else {
+      clientId = CLIENT_ID
+      clientSecret = CLIENT_SECRET
     }
-
-    const keys: OAuthKeys = parsedKeys
 
     logger('info', 'Creating OAuth2Client with credentials')
 
     const oauth2Client = new OAuth2Client({
-      clientId: keys.installed.client_id,
-      clientSecret: keys.installed.client_secret,
+      clientId,
+      clientSecret,
       redirectUri: `http://localhost:${AUTH_SERVER_PORT}/oauth2callback`
     })
+
+    if (REFRESH_TOKEN) oauth2Client.setCredentials({ refresh_token: REFRESH_TOKEN })
 
     if (fs.existsSync(GMAIL_CREDENTIALS_PATH)) {
       logger('info', `Found existing credentials file at ${GMAIL_CREDENTIALS_PATH}`)

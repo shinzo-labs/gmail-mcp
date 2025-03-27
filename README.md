@@ -81,9 +81,11 @@ To install for Claude Desktop automatically via [Smithery](https://smithery.ai/s
 npx -y @smithery/cli install @shinzo-labs/gmail-mcp --client claude
 ```
 
-## Authentication Flow
+## Authentication
 
-The MCP provides an automated authentication flow:
+### Automated (recommended)
+
+This MCP provides an automated authentication flow:
 
 1. First, acquire OAuth credentials and download the JSON file.
 
@@ -113,6 +115,15 @@ Note: by default this server uses port `3000` to listen for the OAuth response. 
 You can customize the config location by setting `MCP_CONFIG_DIR` before running the command (optional):
 ```bash
 export MCP_CONFIG_DIR=/custom/path/to/directory/
+```
+
+### Manual (suggested for Docker usage)
+
+If you wish, you may also provide credentials directly through the environment variables:
+```bash
+export CLIENT_ID=your-id
+export CLIENT_SECRET=your-secret
+export REFRESH_TOKEN=your-refresh-token
 ```
 
 ## Supported Endpoints
