@@ -1,9 +1,5 @@
 # Gmail MCP
 
-<div style="background-color: #ff4d4d; color: white; padding: 15px; margin: 20px 0; border-radius: 5px; font-size: 18px; text-align: center;">
-⚠️ <strong>WARNING:</strong> This server is experimental and functionality is not guaranteed. Please use at your own risk.
-</div>
-
 [![npm version](https://badge.fury.io/js/@shinzolabs%2Fgmail-mcp.svg)](https://badge.fury.io/js/@shinzolabs%2Fgmail-mcp)
 [![smithery badge](https://smithery.ai/badge/@shinzo-labs/gmail-mcp)](https://smithery.ai/server/@shinzo-labs/gmail-mcp)
 
@@ -21,6 +17,8 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) i
 
 ## Installation
 
+⚠️ <strong>NOTE:</strong> Due to the large number of endpoints available on this server, it is recommended that you install and setup [Heimdall](https://github.com/shinzo-labs/heimdall) to limit the number of endpoints exposed to your client applications.
+
 To use this MCP, you'll need to set up authentication with Gmail:
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com)
@@ -33,7 +31,7 @@ To use this MCP, you'll need to set up authentication with Gmail:
 
 ### NPX (Recommended)
 
-Add the following to your `claude_desktop_config.json`:
+Add the following to your MCP client `config.json` (`~/.heimdall/config.json` if using Heimdall):
 ```javascript
 {
   "mcpServers": {
@@ -59,7 +57,7 @@ git clone https://github.com/shinzo-labs/gmail-mcp.git
 pnpm i && pnpm run build
 ```
 
-3. Add the following to your `claude_desktop_config.json`:
+3. Add the following to your MCP client `config.json` (`~/.heimdall/config.json` if using Heimdall):
 ```javascript
 {
   "mcpServers": {
