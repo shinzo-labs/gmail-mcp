@@ -44,8 +44,8 @@ const oauth2Client = createOAuth2Client()
 
 const server = new McpServer({
   name: "Gmail-MCP",
-  version: "1.1.1",
-  description: "An expansive MCP for the Gmail API"
+  version: "1.2.0",
+  description: "Gmail MCP - Provides complete Gmail API access with file-based OAuth2 authentication"
 })
 
 const gmail = google.gmail({ version: 'v1', auth: oauth2Client })

@@ -1,7 +1,7 @@
 {
   "name": "@shinzolabs/gmail-mcp",
-  "version": "1.0.0",
-  "description": "Gmail MCP - Provides Gmail API access with file-based OAuth2 authentication",
+  "version": "1.2.0",
+  "description": "Gmail MCP - Provides complete Gmail API access with file-based OAuth2 authentication",
   "type": "module",
   "bin": {
     "gmail-mcp": "./dist/index.js"
@@ -29,7 +29,7 @@
     "anthropic",
     "email"
   ],
-  "author": "Shinzo Labs",
+  "author": "Austin Born (austin@shinzolabs.com)",
   "license": "MIT",
   "repository": {
     "type": "git",
