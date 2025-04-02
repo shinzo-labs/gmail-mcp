@@ -89,9 +89,9 @@ This MCP provides an automated authentication flow:
 
 1. First, acquire OAuth credentials and download the JSON file.
 
-2. Rename the JSON file to `gcp-oauth.keys.json` and copy it to `$HOME/.gmail-mcp/`, or wherever you've set it in `MCP_CONFIG_DIR` (ex. `$HOME/logs/.shinzo-gmail-mcp`)
+2. Rename the JSON file to `gcp-oauth.keys.json` and copy it to `$HOME/.gmail-mcp/`, or wherever you've set it in `MCP_CONFIG_DIR`.
 
-2. Run the authentication command:
+3. Run the authentication command:
 ```bash
 # If using npx
 npx @shinzolabs/gmail-mcp auth
@@ -100,9 +100,9 @@ npx @shinzolabs/gmail-mcp auth
 pnpm i && pnpm run build && pnpm run auth
 ```
 
-3. A browser window will automatically open to the Google OAuth consent screen
-4. After granting access, you can close the browser window
-5. The tokens will be automatically saved to `~/.gmail-mcp/credentials.json`
+4. A browser window will automatically open to the Google OAuth consent screen
+5. After granting access, you can close the browser window
+6. The tokens will be automatically saved to `$HOME/.gmail-mcp/credentials.json`
 
 The MCP will automatically:
 - Manage token refresh

@@ -15,7 +15,7 @@ export const logger = (level: LogLevel, message: string, data?: any) => {
   if (data) log.data = data
 
   try {
-    fs.appendFileSync(LOG_PATH, JSON.stringify(log) + '\n')
+    fs.appendFileSync(LOG_PATH, JSON.stringify(log) + '\n', { flag: 'a' })
   } catch (error: any) {
     console.error('Error writing to log file:', { error: error.message })
   }

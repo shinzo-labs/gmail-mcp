@@ -4,8 +4,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod"
 import { google, gmail_v1 } from 'googleapis'
+import fs from "fs"
 import { logger } from "./logger.js"
 import { createOAuth2Client, launchAuthServer, validateCredentials } from "./oauth2.js"
+import { MCP_CONFIG_DIR } from "./config.js"
 
 type Draft = gmail_v1.Schema$Draft
 type DraftCreateParams = gmail_v1.Params$Resource$Users$Drafts$Create
@@ -1305,6 +1307,8 @@ server.tool("stop_mail_watch",
 )
 
 const main = async () => {
+  fs.mkdirSync(MCP_CONFIG_DIR, { recursive: true })
+
   if (process.argv[2] === 'auth') {
     await launchAuthServer(oauth2Client)
     process.exit(0)
