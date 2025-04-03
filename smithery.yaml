@@ -5,18 +5,19 @@ startCommand:
   configSchema:
     # JSON Schema defining the configuration options for the MCP.
     type: object
+    description: The CLIENT_ID, CLIENT_SECRET, and REFRESH_TOKEN are required to test the server without running it locally, but see the code README for an overview of how to use credential files for product usage.
     required:
-      - clientId
-      - clientSecret
-      - refreshToken
+      - CLIENT_ID
+      - CLIENT_SECRET
+      - REFRESH_TOKEN
     properties:
-      clientId:
+      CLIENT_ID:
         type: string
         description: OAuth2 client ID
-      clientSecret:
+      CLIENT_SECRET:
         type: string
         description: OAuth2 client Secret
-      refreshToken:
+      REFRESH_TOKEN:
         type: string
         description: Refresh token
   commandFunction:
@@ -25,12 +26,12 @@ startCommand:
       command: 'node',
       args: ['dist/index.js'],
       env: {
-        CLIENT_ID: config.clientId,
-        CLIENT_SECRET: config.clientSecret,
-        REFRESH_TOKEN: config.refreshToken
+        CLIENT_ID: config.CLIENT_ID,
+        CLIENT_SECRET: config.CLIENT_SECRET,
+        REFRESH_TOKEN: config.REFRESH_TOKEN
       }
     })
   exampleConfig:
-    clientId: your_client_id_here
-    clientSecret: your_client_secret_here
-    refreshToken: your_refresh_token_here
+    CLIENT_ID: your_client_id_here
+    CLIENT_SECRET: your_client_secret_here
+    REFRESH_TOKEN: your_refresh_token_here
