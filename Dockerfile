@@ -12,12 +12,13 @@ RUN mkdir -p /home/node/.gmail-mcp && \
 
 RUN npm install -g pnpm
 
-COPY --chown=node:node ["./package.json", "./pnpm-lock.yaml", "./"]
+COPY --chown=node:node package.json pnpm-lock.yaml ./
 
 RUN pnpm fetch
 RUN pnpm install -r --offline
 
-COPY --chown=node:node ["./src", "./tsconfig.json", "./"]
+COPY --chown=node:node src/ ./src/
+COPY --chown=node:node tsconfig.json ./
 
 RUN pnpm run build
 

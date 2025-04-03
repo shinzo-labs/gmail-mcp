@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "Node",
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
@@ -27,6 +27,8 @@
     "test"
   ],
   "ts-node": {
-    "files": true
+    "files": true,
+    "esm": true,
+    "experimentalSpecifierResolution": "node"
   }
 }
