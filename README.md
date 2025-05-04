@@ -211,4 +211,4 @@ pnpm i && pnpm run build
 
 ## Contributing
 
-Contributions are welcomed and encouraged. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on issues, pull requests, and contact information.
+Contributions are welcomed and encouraged. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on issues, contributions, and contact information.
