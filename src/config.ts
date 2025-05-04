@@ -6,6 +6,7 @@ export const LOG_PATH = path.join(MCP_CONFIG_DIR, 'gmail-mcp.log')
 export const GMAIL_OAUTH_PATH = path.join(MCP_CONFIG_DIR, 'gcp-oauth.keys.json')
 export const GMAIL_CREDENTIALS_PATH = path.join(MCP_CONFIG_DIR, 'credentials.json')
 export const AUTH_SERVER_PORT = process.env.AUTH_SERVER_PORT || 3000
+export const STREAMABLE_HTTP_PORT = process.env.STREAMABLE_HTTP_PORT || 3000
 
 export const CLIENT_ID = process.env.CLIENT_ID || ''
 export const CLIENT_SECRET = process.env.CLIENT_SECRET || ''

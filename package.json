@@ -12,16 +12,20 @@
     "auth": "node ./dist/index.js auth"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.11.0",
+    "express": "^5.1.0",
+    "google-auth-library": "^9.15.1",
     "googleapis": "^129.0.0",
-    "google-auth-library": "^9.6.3",
+    "latest": "^0.2.0",
     "open": "^9.1.0",
     "ts-node": "^10.9.2",
-    "zod": "^3.22.4"
+    "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@types/node": "^20.11.24",
-    "typescript": "^5.3.3"
+    "@types/express": "^5.0.1",
+    "@types/node": "^20.17.27",
+    "sdk": "link:@types/@smithery/sdk",
+    "typescript": "^5.8.2"
   },
   "keywords": [
     "gmail",
