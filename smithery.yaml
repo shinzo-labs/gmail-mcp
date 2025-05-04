@@ -5,7 +5,7 @@ startCommand:
   configSchema:
     # JSON Schema defining the configuration options for the MCP.
     type: object
-    description: The CLIENT_ID, CLIENT_SECRET, and REFRESH_TOKEN are required to test the server without running it locally, but see the code README for an overview of how to use credential files for product usage.
+    description: The CLIENT_ID, CLIENT_SECRET, and REFRESH_TOKEN are required for remote server usage.
     required:
       - CLIENT_ID
       - CLIENT_SECRET
@@ -13,13 +13,13 @@ startCommand:
     properties:
       CLIENT_ID:
         type: string
-        description: OAuth2 client ID
+        description: "CLIENT_ID - OAuth2 client ID (required for remote server)"
       CLIENT_SECRET:
         type: string
-        description: OAuth2 client Secret
+        description: "CLIENT_SECRET - OAuth2 client Secret (required for remote server)"
       REFRESH_TOKEN:
         type: string
-        description: Refresh token
+        description: "REFRESH_TOKEN - OAuth2 refresh token (required for remote server)"
   commandFunction:
     |-
     (config) => ({
