@@ -97,7 +97,7 @@ pnpm i && pnpm build
 
 ## Config Variables
 
-| Variable                 | Description                                             | Required?                       | Default Value                        |
+| Variable                 | Description                                             | Required?                       | Default                              |
 |--------------------------|---------------------------------------------------------|---------------------------------|--------------------------------------|
 | `AUTH_SERVER_PORT`       | Port for the OAuth authentication server                | No                              | `3000`                               |
 | `CLIENT_ID`              | Google API client ID (found in `GMAIL_OAUTH_PATH`)      | Yes if remote server connection | `''`                                 |
