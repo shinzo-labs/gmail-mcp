@@ -32,13 +32,16 @@ export const createOAuth2Client = () => {
       const keysContent = fs.readFileSync(GMAIL_OAUTH_PATH, 'utf8')
       const parsedKeys = JSON.parse(keysContent)
 
-      if (!parsedKeys?.installed.client_id || !parsedKeys.installed.client_secret) {
+      if (
+        (!parsedKeys?.installed?.client_id || !parsedKeys?.installed?.client_secret) &&
+        (!parsedKeys?.web?.client_id || !parsedKeys?.web?.client_secret)
+      ) {
         logger('error', 'Invalid OAuth keys format', parsedKeys)
         process.exit(1)
       }
 
-      clientId = parsedKeys.installed.client_id
-      clientSecret = parsedKeys.installed.client_secret
+      clientId = parsedKeys?.installed?.client_id || parsedKeys?.web?.client_id
+      clientSecret = parsedKeys?.installed?.client_secret || parsedKeys?.web?.client_secret
     } else {
       clientId = CLIENT_ID
       clientSecret = CLIENT_SECRET
@@ -99,7 +102,7 @@ export const launchAuthServer = async (oauth2Client: OAuth2Client) => new Promis
       fs.writeFileSync(GMAIL_CREDENTIALS_PATH, JSON.stringify(tokens, null, 2))
 
       res.writeHead(200)
-      res.end('Authentication successful! You can close this window.')
+      res.end(`Authentication successful! Go to ${GMAIL_CREDENTIALS_PATH} to view your REFRESH_TOKEN. You can close this window.`)
       server.close()
       resolve(void 0)
     } catch (error: any) {

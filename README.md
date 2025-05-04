@@ -13,25 +13,49 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) i
 - Thread operations for conversation management
 - Settings management including vacation responder, IMAP/POP, and language settings
 - History tracking for mailbox changes
-- Secure OAuth2 authentication using your Google Cloud credentials
+- Secure OAuth2 authentication using Google Cloud credentials
 
-## Installation
+## Prerequisites
 
-⚠️ <strong>NOTE:</strong> Due to the large number of endpoints available on this server, it is recommended that you install and setup [Heimdall](https://github.com/shinzo-labs/heimdall) to limit the number of endpoints exposed to your client applications.
+To run this MCP server, you first need to set up a Google API Client for your organization, with each user running a script to retrieve their own OAuth refresh token.
 
-To use this MCP, you'll need to set up authentication with Gmail:
+### Google API Client Setup (once per organization)
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com)
-2. Create a new project or select an existing one
-3. Enable the Gmail API for your project
-4. Go to Credentials and create an OAuth 2.0 Client ID
-   - Choose "Desktop app" as the application type (*Warning*: if you don't choose this type the server will not be able to parse the keys from your JSON file)
-   - Download the client credentials JSON file
-5. Save the downloaded credentials file to `~/.gmail-mcp/gcp-oauth.keys.json`
+1. Go to the [Google Cloud Console](https://console.cloud.google.com).
+2. Create a new project or select an existing one.
+3. Enable the Gmail API for your project.
+4. Go to Credentials and create an OAuth 2.0 Client ID. Choose either "Desktop app", or "Web application with `http://localhost:3000/oauth2callback` as an Authorized Redirect URI (If `$AUTH_SERVER_PORT` is set to something other than the default `3000` then use your configured port number instead).
+5. Download and save the client credentials JSON file as `~/.gmail-mcp/gcp-oauth.keys.json`.
+6. (Optional) For remote server installation (ex. using Smithery CLI), note the `CLIENT_ID` and `CLIENT_SECRET` from this file.
 
-### NPX (Recommended)
+### Client OAuth (once per user)
 
-Add the following to your MCP client `config.json` (`~/.heimdall/config.json` if using Heimdall):
+1. Have the user copy `~/.gmail-mcp/gcp-oauth.keys.json` to their computer at the same path.
+2. Run `npx @shinzolabs/gmail-mcp auth`.
+3. A browser window will open where the user may select a profile, review the requested scopes, and approve.
+4. (Optional) For remote server installation, note the file path mentioned in the success message (`~/.gmail-mcp/credentials.json` by default). The user's `REFRESH_TOKEN` will be found here.
+
+## Client Configuration
+
+There are several options to configure your MCP client with the server. For hosted/remote server setup, use Smithery's CLI with a [Smithery API Key](https://smithery.ai/docs/registry#registry-api). For local installation, use `npx` or build from source. Each of these options is explained below.
+
+### Smithery Remote Server (Recommended)
+
+To add a remote server to your MCP client `config.json`, run the following command from [Smithery CLI](https://github.com/smithery-ai/cli?tab=readme-ov-file#smithery-cli--):
+
+```bash
+npx -y @smithery/cli install @shinzo-labs/gmail-mcp --client <claude|cline|windsurf|roocode|witsy|enconvo|cursor|vscode|vscode-insiders|boltai|amazon-bedrock>
+```
+
+Enter your `CLIENT_ID`, `CLIENT_SECRET`, and `REFRESH_TOKEN` when prompted.
+
+### Smithery SDK
+
+If you are developing your own application, you can use the boilerplate code [here](https://smithery.ai/server/@shinzo-labs/gmail-mcp/api).
+
+### NPX Local Install
+
+To install the server locally with `npx`, add the following to your MCP client `config.json`:
 ```javascript
 {
   "mcpServers": {
@@ -45,19 +69,19 @@ Add the following to your MCP client `config.json` (`~/.heimdall/config.json` if
 }
 ```
 
-### Manual Download
+### Build from Source
 
 1. Download the repo:
 ```bash
 git clone https://github.com/shinzo-labs/gmail-mcp.git
 ```
 
-2. Install packages and build (inside cloned repo):
+2. Install packages and build with `pnpm` (inside cloned repo):
 ```bash
 pnpm i && pnpm run build
 ```
 
-3. Add the following to your MCP client `config.json` (`~/.heimdall/config.json` if using Heimdall):
+3. Add the following to your MCP client `config.json`:
 ```javascript
 {
   "mcpServers": {
@@ -71,58 +95,18 @@ pnpm i && pnpm run build
 }
 ```
 
-### Smithery
+## Config Variables
 
-To install for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@shinzo-labs/gmail-mcp):
-
-```bash
-npx -y @smithery/cli install @shinzo-labs/gmail-mcp --client claude
-```
-
-## Authentication
-
-### Automated (recommended)
-
-This MCP provides an automated authentication flow:
-
-1. First, acquire OAuth credentials and download the JSON file.
-
-2. Rename the JSON file to `gcp-oauth.keys.json` and copy it to `$HOME/.gmail-mcp/`, or wherever you've set it in `MCP_CONFIG_DIR`.
-
-3. Run the authentication command:
-```bash
-# If using npx
-npx @shinzolabs/gmail-mcp auth
-
-# If in the project directory
-pnpm i && pnpm run build && pnpm run auth
-```
-
-4. A browser window will automatically open to the Google OAuth consent screen
-5. After granting access, you can close the browser window
-6. The tokens will be automatically saved to `$HOME/.gmail-mcp/credentials.json`
-
-The MCP will automatically:
-- Manage token refresh
-- Save credentials to disk
-- Handle the OAuth callback
-- Open the authentication URL in your default browser
-
-Note: by default this server uses port `3000` to listen for the OAuth response. You can set `AUTH_SERVER_PORT` to something else if you are running another service on `3000`.
-
-You can customize the config location by setting `MCP_CONFIG_DIR` before running the command (optional):
-```bash
-export MCP_CONFIG_DIR=/custom/path/to/directory/
-```
-
-### Manual (suggested for Docker usage)
-
-If you wish, you may also provide credentials directly through the environment variables:
-```bash
-export CLIENT_ID=your-id
-export CLIENT_SECRET=your-secret
-export REFRESH_TOKEN=your-refresh-token
-```
+| Variable                 | Description                                             | Required?                        | Default Value                        |
+|--------------------------|---------------------------------------------------------|----------------------------------|--------------------------------------|
+| `AUTH_SERVER_PORT`       | Port for the OAuth authentication server                | No                               | `3000`                               |
+| `CLIENT_ID`              | Google API client ID (found in `GMAIL_OAUTH_PATH`)      | Yes for remote server connection | `''`                                 |
+| `CLIENT_SECRET`          | Google API client secret (found in `GMAIL_OAUTH_PATH`)  | Yes for remote server connection | `''`                                 |
+| `GMAIL_CREDENTIALS_PATH` | Path to the user credentials file                       | No                               | `MCP_CONFIG_DIR/credentials.json`    |
+| `GMAIL_OAUTH_PATH`       | Path to the Google API Client file                      | No                               | `MCP_CONFIG_DIR/gcp-oauth.keys.json` |
+| `LOG_PATH`               | Path to logs                                            | No                               | `MCP_CONFIG_DIR/gmail-mcp.log`       |
+| `MCP_CONFIG_DIR`         | Directory for storing configuration files               | No                               | `~/.gmail-mcp`                       |
+| `REFRESH_TOKEN`          | OAuth refresh token (found in `GMAIL_CREDENTIALS_PATH`) | Yes for remote server connection | `''`                                 |
 
 ## Supported Endpoints
 
@@ -227,4 +211,4 @@ export REFRESH_TOKEN=your-refresh-token
 
 ## Contributing
 
-Contributions are welcomed and encouraged. Contact austin@shinzolabs.com with any questions, comments or concerns.
+Contributions are welcomed and encouraged. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on issues, pull requests, and contact information.
