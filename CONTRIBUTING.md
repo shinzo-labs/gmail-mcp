@@ -18,7 +18,7 @@ If you would like to contribute code to the codebase, please contact austin@shin
 3. Implement the desired changes.
 4. Open a Pull Request from your forked repo back to the main repo. Tag one of the core contributors as a reviewer.
 5. Once the core contributor has reviewed the code and all comments have been resolved, the PR will be approved and merged into the `main` branch.
-6. The `main` branch will have tagged releases on a regular schedule pending changes to the codebase.
+6. Merged changes will be added to a versioned package release on a regular schedule.
 
 ## Contact
 

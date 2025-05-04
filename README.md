@@ -24,8 +24,8 @@ To run this MCP server, you first need to set up a Google API Client for your or
 1. Go to the [Google Cloud Console](https://console.cloud.google.com).
 2. Create a new project or select an existing one.
 3. Enable the Gmail API for your project.
-4. Go to Credentials and create an OAuth 2.0 Client ID. Choose either "Desktop app", or "Web application with `http://localhost:3000/oauth2callback` as an Authorized Redirect URI (If `$AUTH_SERVER_PORT` is set to something other than the default `3000` then use your configured port number instead).
-5. Download and save the client credentials JSON file as `~/.gmail-mcp/gcp-oauth.keys.json`.
+4. Go to Credentials and create an OAuth 2.0 Client ID. Choose either "Desktop app", or "Web application with `http://localhost:3000/oauth2callback` as an Authorized Redirect URI.
+5. Download and save the OAuth keys JSON as `~/.gmail-mcp/gcp-oauth.keys.json`.
 6. (Optional) For remote server installation (ex. using Smithery CLI), note the `CLIENT_ID` and `CLIENT_SECRET` from this file.
 
 ### Client OAuth (once per user)
@@ -44,14 +44,14 @@ There are several options to configure your MCP client with the server. For host
 To add a remote server to your MCP client `config.json`, run the following command from [Smithery CLI](https://github.com/smithery-ai/cli?tab=readme-ov-file#smithery-cli--):
 
 ```bash
-npx -y @smithery/cli install @shinzo-labs/gmail-mcp --client <claude|cline|windsurf|roocode|witsy|enconvo|cursor|vscode|vscode-insiders|boltai|amazon-bedrock>
+npx -y @smithery/cli install @shinzo-labs/gmail-mcp
 ```
 
 Enter your `CLIENT_ID`, `CLIENT_SECRET`, and `REFRESH_TOKEN` when prompted.
 
 ### Smithery SDK
 
-If you are developing your own application, you can use the boilerplate code [here](https://smithery.ai/server/@shinzo-labs/gmail-mcp/api).
+If you are developing your own agent application, you can use the boilerplate code [here](https://smithery.ai/server/@shinzo-labs/gmail-mcp/api).
 
 ### NPX Local Install
 
@@ -78,7 +78,7 @@ git clone https://github.com/shinzo-labs/gmail-mcp.git
 
 2. Install packages and build with `pnpm` (inside cloned repo):
 ```bash
-pnpm i && pnpm run build
+pnpm i && pnpm build
 ```
 
 3. Add the following to your MCP client `config.json`:
@@ -97,16 +97,16 @@ pnpm i && pnpm run build
 
 ## Config Variables
 
-| Variable                 | Description                                             | Required?                        | Default Value                        |
-|--------------------------|---------------------------------------------------------|----------------------------------|--------------------------------------|
-| `AUTH_SERVER_PORT`       | Port for the OAuth authentication server                | No                               | `3000`                               |
-| `CLIENT_ID`              | Google API client ID (found in `GMAIL_OAUTH_PATH`)      | Yes for remote server connection | `''`                                 |
-| `CLIENT_SECRET`          | Google API client secret (found in `GMAIL_OAUTH_PATH`)  | Yes for remote server connection | `''`                                 |
-| `GMAIL_CREDENTIALS_PATH` | Path to the user credentials file                       | No                               | `MCP_CONFIG_DIR/credentials.json`    |
-| `GMAIL_OAUTH_PATH`       | Path to the Google API Client file                      | No                               | `MCP_CONFIG_DIR/gcp-oauth.keys.json` |
-| `LOG_PATH`               | Path to logs                                            | No                               | `MCP_CONFIG_DIR/gmail-mcp.log`       |
-| `MCP_CONFIG_DIR`         | Directory for storing configuration files               | No                               | `~/.gmail-mcp`                       |
-| `REFRESH_TOKEN`          | OAuth refresh token (found in `GMAIL_CREDENTIALS_PATH`) | Yes for remote server connection | `''`                                 |
+| Variable                 | Description                                             | Required?                       | Default Value                        |
+|--------------------------|---------------------------------------------------------|---------------------------------|--------------------------------------|
+| `AUTH_SERVER_PORT`       | Port for the OAuth authentication server                | No                              | `3000`                               |
+| `CLIENT_ID`              | Google API client ID (found in `GMAIL_OAUTH_PATH`)      | Yes if remote server connection | `''`                                 |
+| `CLIENT_SECRET`          | Google API client secret (found in `GMAIL_OAUTH_PATH`)  | Yes if remote server connection | `''`                                 |
+| `GMAIL_CREDENTIALS_PATH` | Path to the user credentials file                       | No                              | `MCP_CONFIG_DIR/credentials.json`    |
+| `GMAIL_OAUTH_PATH`       | Path to the Google API Client file                      | No                              | `MCP_CONFIG_DIR/gcp-oauth.keys.json` |
+| `LOG_PATH`               | Path to logs                                            | No                              | `MCP_CONFIG_DIR/gmail-mcp.log`       |
+| `MCP_CONFIG_DIR`         | Directory for storing configuration files               | No                              | `~/.gmail-mcp`                       |
+| `REFRESH_TOKEN`          | OAuth refresh token (found in `GMAIL_CREDENTIALS_PATH`) | Yes if remote server connection | `''`                                 |
 
 ## Supported Endpoints
 
@@ -211,4 +211,4 @@ pnpm i && pnpm run build
 
 ## Contributing
 
-Contributions are welcomed and encouraged. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on issues, contributions, and contact information.
+Contributions are welcomed and encouraged! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on issues, contributions, and contact information.
