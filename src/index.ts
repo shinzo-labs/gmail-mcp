@@ -1378,9 +1378,7 @@ const main = async () => {
   })
 
   // Start the server
-  app.listen(STREAMABLE_HTTP_PORT, () => {
-    console.log(`MCP Stateless Streamable HTTP Server listening on port ${STREAMABLE_HTTP_PORT}`)
-  })
+  app.listen(STREAMABLE_HTTP_PORT)
 }
 
 main()
