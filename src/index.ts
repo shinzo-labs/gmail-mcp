@@ -9,7 +9,7 @@ import fs from "fs"
 import express, { Request, Response } from "express"
 import { logger } from "./logger.js"
 import { createOAuth2Client, launchAuthServer, validateCredentials } from "./oauth2.js"
-import { MCP_CONFIG_DIR, STREAMABLE_HTTP_PORT } from "./config.js"
+import { MCP_CONFIG_DIR, PORT } from "./config.js"
 
 type Draft = gmail_v1.Schema$Draft
 type DraftCreateParams = gmail_v1.Params$Resource$Users$Drafts$Create
@@ -1378,7 +1378,7 @@ const main = async () => {
   })
 
   // Start the server
-  app.listen(STREAMABLE_HTTP_PORT)
+  app.listen(PORT)
 }
 
 main()

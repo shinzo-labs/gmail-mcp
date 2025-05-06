@@ -107,7 +107,7 @@ pnpm i && pnpm build
 | `LOG_PATH`               | Path to logs                                            | No                              | `MCP_CONFIG_DIR/gmail-mcp.log`       |
 | `MCP_CONFIG_DIR`         | Directory for storing configuration files               | No                              | `~/.gmail-mcp`                       |
 | `REFRESH_TOKEN`          | OAuth refresh token (found in `GMAIL_CREDENTIALS_PATH`) | Yes if remote server connection | `''`                                 |
-| `STREAMABLE_HTTP_PORT`   | Port for Streamable HTTP transport method               | No                              | `3000`                               |
+| `PORT`                   | Port for Streamable HTTP transport method               | No                              | `3000`                               |
 
 ## Supported Endpoints
 
