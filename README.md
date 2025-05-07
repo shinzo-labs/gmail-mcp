@@ -24,7 +24,7 @@ To run this MCP server, you first need to set up a Google API Client for your or
 1. Go to the [Google Cloud Console](https://console.cloud.google.com).
 2. Create a new project or select an existing one.
 3. Enable the Gmail API for your project.
-4. Go to Credentials and create an OAuth 2.0 Client ID. Choose either "Desktop app", or "Web application with `http://localhost:3000/oauth2callback` as an Authorized Redirect URI (if port `3000` is in use you can update this with `AUTH_SERVER_PORT`).
+4. Go to Credentials and create an OAuth 2.0 Client ID. Choose "Desktop app" for the client type.
 5. Download and save the OAuth keys JSON as `~/.gmail-mcp/gcp-oauth.keys.json`.
 6. (Optional) For remote server installation (ex. using Smithery CLI), note the `CLIENT_ID` and `CLIENT_SECRET` from this file.
 
