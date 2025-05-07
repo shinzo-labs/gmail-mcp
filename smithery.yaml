@@ -20,17 +20,6 @@ startCommand:
       REFRESH_TOKEN:
         type: string
         description: "REFRESH_TOKEN - OAuth2 refresh token (required for remote server)"
-  commandFunction:
-    |-
-    (config) => ({
-      command: 'node',
-      args: ['dist/index.js'],
-      env: {
-        CLIENT_ID: config.CLIENT_ID,
-        CLIENT_SECRET: config.CLIENT_SECRET,
-        REFRESH_TOKEN: config.REFRESH_TOKEN
-      }
-    })
   exampleConfig:
     CLIENT_ID: your_client_id_here
     CLIENT_SECRET: your_client_secret_here

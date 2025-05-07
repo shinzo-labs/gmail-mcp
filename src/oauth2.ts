@@ -1,5 +1,4 @@
 import { AUTH_SERVER_PORT, CLIENT_ID, CLIENT_SECRET, GMAIL_CREDENTIALS_PATH, GMAIL_OAUTH_PATH, REFRESH_TOKEN } from "./config.js"
-import { logger } from "./logger.js"
 import { OAuth2Client } from "google-auth-library"
 import fs from "fs"
 import http from "http"
@@ -13,63 +12,52 @@ const AUTH_SCOPES = [
   'https://www.googleapis.com/auth/gmail.settings.sharing'
 ]
 
-export const createOAuth2Client = () => {
+const getEnvBasedCredentials = (queryConfig?: Record<string, any>) => {
+  const clientId = queryConfig?.CLIENT_ID || CLIENT_ID
+  const clientSecret = queryConfig?.CLIENT_SECRET || CLIENT_SECRET
+  const refreshToken = queryConfig?.REFRESH_TOKEN || REFRESH_TOKEN
+
+  if (!clientId || !clientSecret || !refreshToken) return null
+
+  return { clientId, clientSecret, refreshToken }
+}
+
+const getFileBasedCredentials = () => {
+  const oauthFilePresent = fs.existsSync(GMAIL_OAUTH_PATH)
+  if (!oauthFilePresent) return null
+
+  const keysContent = fs.readFileSync(GMAIL_OAUTH_PATH, 'utf8')
+  const parsedKeys = JSON.parse(keysContent)
+
+  const clientId = parsedKeys?.installed?.client_id || parsedKeys?.web?.client_id
+  const clientSecret = parsedKeys?.installed?.client_secret || parsedKeys?.web?.client_secret
+
+  let refreshToken = null
+  if (fs.existsSync(GMAIL_CREDENTIALS_PATH)) {
+    const gmailCredentialsFile = JSON.parse(fs.readFileSync(GMAIL_CREDENTIALS_PATH, 'utf8'))
+    refreshToken = gmailCredentialsFile?.refresh_token
+  }
+
+  return { clientId, clientSecret, refreshToken }
+}
+
+export const createOAuth2Client = (queryConfig?: Record<string, any>) => {
   try {
-    logger('info', 'Starting OAuth2Client creation')
+    let credentials = getEnvBasedCredentials(queryConfig)
 
-    const oauthFilePresent = fs.existsSync(GMAIL_OAUTH_PATH)
-    const credentialsFoundInEnv = (CLIENT_ID && CLIENT_SECRET && REFRESH_TOKEN)
-
-    if (!credentialsFoundInEnv && !oauthFilePresent) {
-      logger('error', 'Missing required environment variables or credentials file, see README for details.')
-      process.exit(1)
-    }
-
-    let clientId: string
-    let clientSecret: string
-
-    if (oauthFilePresent) {
-      const keysContent = fs.readFileSync(GMAIL_OAUTH_PATH, 'utf8')
-      const parsedKeys = JSON.parse(keysContent)
-
-      if (
-        (!parsedKeys?.installed?.client_id || !parsedKeys?.installed?.client_secret) &&
-        (!parsedKeys?.web?.client_id || !parsedKeys?.web?.client_secret)
-      ) {
-        logger('error', 'Invalid OAuth keys format', parsedKeys)
-        process.exit(1)
-      }
-
-      clientId = parsedKeys?.installed?.client_id || parsedKeys?.web?.client_id
-      clientSecret = parsedKeys?.installed?.client_secret || parsedKeys?.web?.client_secret
-    } else {
-      clientId = CLIENT_ID
-      clientSecret = CLIENT_SECRET
-    }
-
-    logger('info', 'Creating OAuth2Client with credentials')
+    if (!credentials) credentials = getFileBasedCredentials()
 
     const oauth2Client = new OAuth2Client({
-      clientId,
-      clientSecret,
+      clientId: credentials?.clientId,
+      clientSecret: credentials?.clientSecret,
       redirectUri: `http://localhost:${AUTH_SERVER_PORT}/oauth2callback`
     })
 
-    if (REFRESH_TOKEN) oauth2Client.setCredentials({ refresh_token: REFRESH_TOKEN })
-
-    if (fs.existsSync(GMAIL_CREDENTIALS_PATH)) {
-      logger('info', `Found existing credentials file at ${GMAIL_CREDENTIALS_PATH}`)
-      const credentials = JSON.parse(fs.readFileSync(GMAIL_CREDENTIALS_PATH, 'utf8'))
-      oauth2Client.setCredentials(credentials)
-      logger('info', 'Successfully loaded existing credentials')
-    } else {
-      logger('info', `No existing credentials file found at ${GMAIL_CREDENTIALS_PATH}`)
-    }
+    if (credentials?.refreshToken) oauth2Client.setCredentials({ refresh_token: credentials.refreshToken })
 
     return oauth2Client
   } catch (error: any) {
-    logger('error', 'Failed to create OAuth2Client', { error: error.message })
-    process.exit(1)
+    return null
   }
 }
 
@@ -79,7 +67,7 @@ export const launchAuthServer = async (oauth2Client: OAuth2Client) => new Promis
 
   const authUrl = oauth2Client.generateAuthUrl({ access_type: 'offline', scope: AUTH_SCOPES })
 
-  logger('info', `Please visit this URL to authenticate: ${authUrl}`)
+  console.log(`Please visit this URL to authenticate: ${authUrl}`)
 
   open(authUrl)
 
@@ -116,36 +104,21 @@ export const launchAuthServer = async (oauth2Client: OAuth2Client) => new Promis
 export const validateCredentials = async (oauth2Client: OAuth2Client) => {
   try {
     const { credentials } = oauth2Client
-    if (!credentials) {
-      logger('info', 'No credentials found, please re-authenticate')
-      return false
-    }
+    if (!credentials) return false
 
-    const currentTime = Date.now()
     const expiryDate = credentials.expiry_date
-    const needsRefresh = !expiryDate || expiryDate <= currentTime
+    const needsRefresh = !expiryDate || expiryDate <= Date.now()
 
-    if (!needsRefresh) {
-      logger('info', 'Credentials are valid')
-      return true
-    }
+    if (!needsRefresh) return true
 
-    if (!credentials.refresh_token) {
-      logger('info', 'No refresh token found, please re-authenticate')
-      return false
-    }
-
-    const timeUntilExpiry = expiryDate ? (expiryDate - currentTime) : 0
-    logger('info', `Access token is ${timeUntilExpiry > 0 ? 'expiring in ' + timeUntilExpiry + ' seconds' : 'expired'}, refreshing token`)
+    if (!credentials.refresh_token) return false
 
     const { credentials: tokens } = await oauth2Client.refreshAccessToken()
     oauth2Client.setCredentials(tokens)
 
     fs.writeFileSync(GMAIL_CREDENTIALS_PATH, JSON.stringify(tokens, null, 2))
-    logger('info', 'Successfully refreshed and saved new credentials')
     return true
   } catch (error: any) { 
-    logger('error', 'Error validating credentials', { error: error.message })
     return false
   }
 }

@@ -104,7 +104,6 @@ pnpm i && pnpm build
 | `CLIENT_SECRET`          | Google API client secret (found in `GMAIL_OAUTH_PATH`)  | Yes if remote server connection | `''`                                 |
 | `GMAIL_CREDENTIALS_PATH` | Path to the user credentials file                       | No                              | `MCP_CONFIG_DIR/credentials.json`    |
 | `GMAIL_OAUTH_PATH`       | Path to the Google API Client file                      | No                              | `MCP_CONFIG_DIR/gcp-oauth.keys.json` |
-| `LOG_PATH`               | Path to logs                                            | No                              | `MCP_CONFIG_DIR/gmail-mcp.log`       |
 | `MCP_CONFIG_DIR`         | Directory for storing configuration files               | No                              | `~/.gmail-mcp`                       |
 | `REFRESH_TOKEN`          | OAuth refresh token (found in `GMAIL_CREDENTIALS_PATH`) | Yes if remote server connection | `''`                                 |
 | `PORT`                   | Port for Streamable HTTP transport method               | No                              | `3000`                               |

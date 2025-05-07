@@ -2,12 +2,10 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"
+import { createStatelessServer } from "@smithery/sdk/server/stateless.js"
 import { z } from "zod"
 import { google, gmail_v1 } from 'googleapis'
 import fs from "fs"
-import express, { Request, Response } from "express"
-import { logger } from "./logger.js"
 import { createOAuth2Client, launchAuthServer, validateCredentials } from "./oauth2.js"
 import { MCP_CONFIG_DIR, PORT } from "./config.js"
 
@@ -42,23 +40,26 @@ const RESPONSE_HEADERS_LIST = [
   'References'
 ]
 
-const oauth2Client = createOAuth2Client()
+const defaultOAuth2Client = createOAuth2Client()
 
-const gmail = google.gmail({ version: 'v1', auth: oauth2Client })
+const defaultGmailClient = defaultOAuth2Client ? google.gmail({ version: 'v1', auth: defaultOAuth2Client }) : null
 
 const formatResponse = (response: any) => ({ content: [{ type: "text", text: JSON.stringify(response) }] })
 
-const handleTool = async (apiCall: () => Promise<any>) => {
-  logger('info', 'Starting tool handler')
+const handleTool = async (queryConfig: Record<string, any> | undefined, apiCall: (gmail: gmail_v1.Gmail) => Promise<any>) => {
   try {
-    const credentialsAreValid = await validateCredentials(oauth2Client)
-    if (!credentialsAreValid) throw new Error('No credentials found, you may need to run "npx @shinzolabs/gmail-mcp auth" to authenticate')
+    const oauth2Client = queryConfig ? createOAuth2Client(queryConfig) : defaultOAuth2Client
+    if (!oauth2Client) throw new Error('OAuth2 client could not be created, please check your credentials')
 
-    const result = await apiCall()
-    logger('info', 'Tool execution completed successfully')
+    const credentialsAreValid = await validateCredentials(oauth2Client)
+    if (!credentialsAreValid) throw new Error('OAuth2 credentials are invalid, please re-authenticate')
+
+    const gmailClient = queryConfig ? google.gmail({ version: 'v1', auth: oauth2Client }) : defaultGmailClient
+    if (!gmailClient) throw new Error('Gmail client could not be created, please check your credentials')
+
+    const result = await apiCall(gmailClient)
     return result
   } catch (error: any) {
-    logger('error', `Tool execution failed: ${error.message}\n${error.stack}`)
     return `Tool execution failed: ${error.message}`
   }
 }
@@ -66,14 +67,12 @@ const handleTool = async (apiCall: () => Promise<any>) => {
 const decodedBody = (body: MessagePartBody) => {
   if (!body?.data) return body
 
-  logger('debug', 'Decoding body', body)
   const decodedData = Buffer.from(body.data, 'base64').toString('utf-8')
   const decodedBody: MessagePartBody = {
     data: decodedData,
     size: body.data.length,
     attachmentId: body.attachmentId
   }
-  logger('debug', 'Decoded body', decodedBody)
   return decodedBody
 }
 
@@ -183,9 +182,7 @@ const wrapTextBody = (text: string): string => text.split('\n').map(line => {
   return chunks.join('=\n')
 }).join('\n')
 
-const constructRawMessage = async (params: NewMessage) => {
-  logger('debug', 'Constructing raw email message', { params })
-
+const constructRawMessage = async (gmail: gmail_v1.Gmail, params: NewMessage) => {
   let thread: Thread | null = null
   if (params.threadId) {
     const threadParams = { userId: 'me', id: params.threadId, format: 'full' }
@@ -219,12 +216,10 @@ const constructRawMessage = async (params: NewMessage) => {
     }
   }
 
-  logger('debug', 'Constructed raw email message', { message })
-
   return Buffer.from(message.join('\r\n')).toString('base64url').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-const createServer = () => {
+function createServer({ config }: { config?: Record<string, any> }) {
   const server = new McpServer({
     name: "Gmail-MCP",
     version: "1.2.2",
@@ -244,9 +239,9 @@ const createServer = () => {
       includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         let raw = params.raw
-        if (!raw) raw = await constructRawMessage(params)
+        if (!raw) raw = await constructRawMessage(gmail, params)
 
         const draftCreateParams: DraftCreateParams = { userId: 'me', requestBody: { message: { raw } } }
         if (params.threadId && draftCreateParams.requestBody?.message) {
@@ -273,7 +268,7 @@ const createServer = () => {
       id: z.string().describe("The ID of the draft to delete")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.drafts.delete({ userId: 'me', id: params.id })
         return formatResponse(data)
       })
@@ -287,7 +282,7 @@ const createServer = () => {
       includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.drafts.get({ userId: 'me', id: params.id, format: 'full' })
 
         if (data.message?.payload) {
@@ -311,7 +306,7 @@ const createServer = () => {
       includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large"),
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         let drafts: Draft[] = []
 
         const { data } = await gmail.users.drafts.list({ userId: 'me', ...params })
@@ -346,12 +341,11 @@ const createServer = () => {
       id: z.string().describe("The ID of the draft to send")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         try {
           const { data } = await gmail.users.drafts.send({ userId: 'me', requestBody: { id: params.id } })
           return formatResponse(data)
         } catch (error) {
-          logger('error', 'Error sending draft', { error })
           return formatResponse({ error: 'Error sending draft, are you sure you have at least one recipient?' })
         }
       })
@@ -372,7 +366,7 @@ const createServer = () => {
       includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         let raw = params.raw
         const currentDraft = await gmail.users.drafts.get({ userId: 'me', id: params.id, format: 'full' })
         const { payload } = currentDraft.data.message ?? {}
@@ -384,7 +378,7 @@ const createServer = () => {
         if (!params.subject) params.subject = findHeader(payload?.headers || [], 'subject')
         if (!params.body) params.body = payload?.parts?.find(p => p.mimeType === 'text/plain')?.body?.data ?? undefined
 
-        if (!raw) raw = await constructRawMessage(params)
+        if (!raw) raw = await constructRawMessage(gmail, params)
 
         const draftUpdateParams: DraftUpdateParams = { userId: 'me', id: params.id, requestBody: { message: { raw, id: params.id } } }
         if (params.threadId && draftUpdateParams.requestBody?.message) {
@@ -417,7 +411,7 @@ const createServer = () => {
       }).optional().describe("The color settings for the label")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.labels.create({ userId: 'me', requestBody: params })
         return formatResponse(data)
       })
@@ -430,7 +424,7 @@ const createServer = () => {
       id: z.string().describe("The ID of the label to delete")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.labels.delete({ userId: 'me', id: params.id })
         return formatResponse(data)
       })
@@ -443,7 +437,7 @@ const createServer = () => {
       id: z.string().describe("The ID of the label to retrieve")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.labels.get({ userId: 'me', id: params.id })
         return formatResponse(data)
       })
@@ -454,7 +448,7 @@ const createServer = () => {
     "List all labels in the user's mailbox",
     {},
     async () => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.labels.list({ userId: 'me' })
         return formatResponse(data)
       })
@@ -475,7 +469,7 @@ const createServer = () => {
     },
     async (params) => {
       const { id, ...labelData } = params
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.labels.patch({ userId: 'me', id, requestBody: labelData })
         return formatResponse(data)
       })
@@ -496,7 +490,7 @@ const createServer = () => {
     },
     async (params) => {
       const { id, ...labelData } = params
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.labels.update({ userId: 'me', id, requestBody: labelData })
         return formatResponse(data)
       })
@@ -509,7 +503,7 @@ const createServer = () => {
       ids: z.array(z.string()).describe("The IDs of the messages to delete")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.messages.batchDelete({ userId: 'me', requestBody: { ids: params.ids } })
         return formatResponse(data)
       })
@@ -524,7 +518,7 @@ const createServer = () => {
       removeLabelIds: z.array(z.string()).optional().describe("A list of label IDs to remove from the messages")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.messages.batchModify({ userId: 'me', requestBody: { ids: params.ids, addLabelIds: params.addLabelIds, removeLabelIds: params.removeLabelIds } })
         return formatResponse(data)
       })
@@ -537,7 +531,7 @@ const createServer = () => {
       id: z.string().describe("The ID of the message to delete")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.messages.delete({ userId: 'me', id: params.id })
         return formatResponse(data)
       })
@@ -551,7 +545,7 @@ const createServer = () => {
       includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.messages.get({ userId: 'me', id: params.id, format: 'full' })
 
         if (data.payload) {
@@ -574,7 +568,7 @@ const createServer = () => {
       includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large"),
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.messages.list({ userId: 'me', ...params })
 
         if (data.messages) {
@@ -602,7 +596,7 @@ const createServer = () => {
       removeLabelIds: z.array(z.string()).optional().describe("A list of label IDs to remove from the message")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.messages.modify({ userId: 'me', id: params.id, requestBody: { addLabelIds: params.addLabelIds, removeLabelIds: params.removeLabelIds } })
         return formatResponse(data)
       })
@@ -622,9 +616,9 @@ const createServer = () => {
       includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         let raw = params.raw
-        if (!raw) raw = await constructRawMessage(params)
+        if (!raw) raw = await constructRawMessage(gmail, params)
 
         const messageSendParams: MessageSendParams = { userId: 'me', requestBody: { raw } }
         if (params.threadId && messageSendParams.requestBody) {
@@ -651,7 +645,7 @@ const createServer = () => {
       id: z.string().describe("The ID of the message to move to trash")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.messages.trash({ userId: 'me', id: params.id })
         return formatResponse(data)
       })
@@ -664,7 +658,7 @@ const createServer = () => {
       id: z.string().describe("The ID of the message to remove from trash")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.messages.untrash({ userId: 'me', id: params.id })
         return formatResponse(data)
       })
@@ -678,7 +672,7 @@ const createServer = () => {
       id: z.string().describe("The ID of the attachment"),
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.messages.attachments.get({ userId: 'me', messageId: params.messageId, id: params.id })
         return formatResponse(data)
       })
@@ -691,7 +685,7 @@ const createServer = () => {
       id: z.string().describe("The ID of the thread to delete")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.threads.delete({ userId: 'me', id: params.id })
         return formatResponse(data)
       })
@@ -705,7 +699,7 @@ const createServer = () => {
       includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.threads.get({ userId: 'me', id: params.id, format: 'full' })
 
         if (data.messages) {
@@ -733,7 +727,7 @@ const createServer = () => {
       includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large"),
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.threads.list({ userId: 'me', ...params })
 
         if (data.threads) {
@@ -767,7 +761,7 @@ const createServer = () => {
     },
     async (params) => {
       const { id, ...threadData } = params
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.threads.modify({ userId: 'me', id, requestBody: threadData })
         return formatResponse(data)
       })
@@ -780,7 +774,7 @@ const createServer = () => {
       id: z.string().describe("The ID of the thread to move to trash")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.threads.trash({ userId: 'me', id: params.id })
         return formatResponse(data)
       })
@@ -793,7 +787,7 @@ const createServer = () => {
       id: z.string().describe("The ID of the thread to remove from trash")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.threads.untrash({ userId: 'me', id: params.id })
         return formatResponse(data)
       })
@@ -804,7 +798,7 @@ const createServer = () => {
     "Gets auto-forwarding settings",
     {},
     async () => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.getAutoForwarding({ userId: 'me' })
         return formatResponse(data)
       })
@@ -815,7 +809,7 @@ const createServer = () => {
     "Gets IMAP settings",
     {},
     async () => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.getImap({ userId: 'me' })
         return formatResponse(data)
       })
@@ -826,7 +820,7 @@ const createServer = () => {
     "Gets language settings",
     {},
     async () => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.getLanguage({ userId: 'me' })
         return formatResponse(data)
       })
@@ -837,7 +831,7 @@ const createServer = () => {
     "Gets POP settings",
     {},
     async () => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.getPop({ userId: 'me' })
         return formatResponse(data)
       })
@@ -848,7 +842,7 @@ const createServer = () => {
     "Get vacation responder settings",
     {},
     async () => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.getVacation({ userId: 'me' })
         return formatResponse(data)
       })
@@ -863,7 +857,7 @@ const createServer = () => {
       disposition: z.enum(['leaveInInbox', 'archive', 'trash', 'markRead']).describe("The state in which messages should be left after being forwarded")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.updateAutoForwarding({ userId: 'me', requestBody: params })
         return formatResponse(data)
       })
@@ -878,7 +872,7 @@ const createServer = () => {
       maxFolderSize: z.number().optional().describe("An optional limit on the number of messages that can be accessed through IMAP")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.updateImap({ userId: 'me', requestBody: params })
         return formatResponse(data)
       })
@@ -891,7 +885,7 @@ const createServer = () => {
       displayLanguage: z.string().describe("The language to display Gmail in, formatted as an RFC 3066 Language Tag")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.updateLanguage({ userId: 'me', requestBody: params })
         return formatResponse(data)
       })
@@ -905,7 +899,7 @@ const createServer = () => {
       disposition: z.enum(['archive', 'trash', 'leaveInInbox']).describe("The action that will be executed on a message after it has been fetched via POP")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.updatePop({ userId: 'me', requestBody: params })
         return formatResponse(data)
       })
@@ -924,7 +918,7 @@ const createServer = () => {
       endTime: z.string().optional().describe("End time for sending auto-replies (epoch ms)")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.updateVacation({ userId: 'me', requestBody: params })
         return formatResponse(data)
       })
@@ -937,7 +931,7 @@ const createServer = () => {
       delegateEmail: z.string().describe("Email address of delegate to add")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.delegates.create({ userId: 'me', requestBody: { delegateEmail: params.delegateEmail } })
         return formatResponse(data)
       })
@@ -950,7 +944,7 @@ const createServer = () => {
       delegateEmail: z.string().describe("Email address of delegate to remove")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.delegates.delete({ userId: 'me', delegateEmail: params.delegateEmail })
         return formatResponse(data)
       })
@@ -963,7 +957,7 @@ const createServer = () => {
       delegateEmail: z.string().describe("The email address of the delegate to retrieve")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.delegates.get({ userId: 'me', delegateEmail: params.delegateEmail })
         return formatResponse(data)
       })
@@ -974,7 +968,7 @@ const createServer = () => {
     "Lists the delegates for the specified account",
     {},
     async () => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.delegates.list({ userId: 'me' })
         return formatResponse(data)
       })
@@ -1002,7 +996,7 @@ const createServer = () => {
       }).describe("Actions to perform on messages matching the criteria")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.filters.create({ userId: 'me', requestBody: params })
         return formatResponse(data)
       })
@@ -1015,7 +1009,7 @@ const createServer = () => {
       id: z.string().describe("The ID of the filter to be deleted")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.filters.delete({ userId: 'me', id: params.id })
         return formatResponse(data)
       })
@@ -1028,7 +1022,7 @@ const createServer = () => {
       id: z.string().describe("The ID of the filter to be fetched")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.filters.get({ userId: 'me', id: params.id })
         return formatResponse(data)
       })
@@ -1039,7 +1033,7 @@ const createServer = () => {
     "Lists the message filters of a Gmail user",
     {},
     async () => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.filters.list({ userId: 'me' })
         return formatResponse(data)
       })
@@ -1052,7 +1046,7 @@ const createServer = () => {
       forwardingEmail: z.string().describe("An email address to which messages can be forwarded")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.forwardingAddresses.create({ userId: 'me', requestBody: params })
         return formatResponse(data)
       })
@@ -1065,7 +1059,7 @@ const createServer = () => {
       forwardingEmail: z.string().describe("The forwarding address to be deleted")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.forwardingAddresses.delete({ userId: 'me', forwardingEmail: params.forwardingEmail })
         return formatResponse(data)
       })
@@ -1078,7 +1072,7 @@ const createServer = () => {
       forwardingEmail: z.string().describe("The forwarding address to be retrieved")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.forwardingAddresses.get({ userId: 'me', forwardingEmail: params.forwardingEmail })
         return formatResponse(data)
       })
@@ -1089,7 +1083,7 @@ const createServer = () => {
     "Lists the forwarding addresses for the specified account",
     {},
     async () => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.forwardingAddresses.list({ userId: 'me' })
         return formatResponse(data)
       })
@@ -1107,7 +1101,7 @@ const createServer = () => {
       treatAsAlias: z.boolean().optional().describe("Whether Gmail should treat this address as an alias")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.sendAs.create({ userId: 'me', requestBody: params })
         return formatResponse(data)
       })
@@ -1120,7 +1114,7 @@ const createServer = () => {
       sendAsEmail: z.string().describe("The send-as alias to be deleted")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.sendAs.delete({ userId: 'me', sendAsEmail: params.sendAsEmail })
         return formatResponse(data)
       })
@@ -1133,7 +1127,7 @@ const createServer = () => {
       sendAsEmail: z.string().describe("The send-as alias to be retrieved")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.sendAs.get({ userId: 'me', sendAsEmail: params.sendAsEmail })
         return formatResponse(data)
       })
@@ -1144,7 +1138,7 @@ const createServer = () => {
     "Lists the send-as aliases for the specified account",
     {},
     async () => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.sendAs.list({ userId: 'me' })
         return formatResponse(data)
       })
@@ -1163,7 +1157,7 @@ const createServer = () => {
     },
     async (params) => {
       const { sendAsEmail, ...patchData } = params
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.sendAs.patch({ userId: 'me', sendAsEmail, requestBody: patchData })
         return formatResponse(data)
       })
@@ -1182,7 +1176,7 @@ const createServer = () => {
     },
     async (params) => {
       const { sendAsEmail, ...updateData } = params
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.sendAs.update({ userId: 'me', sendAsEmail, requestBody: updateData })
         return formatResponse(data)
       })
@@ -1195,7 +1189,7 @@ const createServer = () => {
       sendAsEmail: z.string().describe("The send-as alias to be verified")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.sendAs.verify({ userId: 'me', sendAsEmail: params.sendAsEmail })
         return formatResponse(data)
       })
@@ -1209,7 +1203,7 @@ const createServer = () => {
       id: z.string().describe("The immutable ID for the S/MIME config")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.sendAs.smimeInfo.delete({ userId: 'me', sendAsEmail: params.sendAsEmail, id: params.id })
         return formatResponse(data)
       })
@@ -1223,7 +1217,7 @@ const createServer = () => {
       id: z.string().describe("The immutable ID for the S/MIME config")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.sendAs.smimeInfo.get({ userId: 'me', sendAsEmail: params.sendAsEmail, id: params.id })
         return formatResponse(data)
       })
@@ -1238,7 +1232,7 @@ const createServer = () => {
       pkcs12: z.string().describe("PKCS#12 format containing a single private/public key pair and certificate chain")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.sendAs.smimeInfo.insert({ userId: 'me', sendAsEmail: params.sendAsEmail, requestBody: params })
         return formatResponse(data)
       })
@@ -1251,7 +1245,7 @@ const createServer = () => {
       sendAsEmail: z.string().describe("The email address that appears in the 'From:' header")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.sendAs.smimeInfo.list({ userId: 'me', sendAsEmail: params.sendAsEmail })
         return formatResponse(data)
       })
@@ -1265,7 +1259,7 @@ const createServer = () => {
       id: z.string().describe("The immutable ID for the S/MIME config")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.settings.sendAs.smimeInfo.setDefault({ userId: 'me', sendAsEmail: params.sendAsEmail, id: params.id })
         return formatResponse(data)
       })
@@ -1276,7 +1270,7 @@ const createServer = () => {
     "Get the current user's Gmail profile",
     {},
     async () => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.getProfile({ userId: 'me' })
         return formatResponse(data)
       })
@@ -1291,7 +1285,7 @@ const createServer = () => {
       labelFilterAction: z.enum(['include', 'exclude']).optional().describe("Whether to include or exclude the specified labels")
     },
     async (params) => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.watch({ userId: 'me', requestBody: params })
         return formatResponse(data)
       })
@@ -1302,7 +1296,7 @@ const createServer = () => {
     "Stop receiving push notifications for the given user mailbox",
     {},
     async () => {
-      return handleTool(async () => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
         const { data } = await gmail.users.stop({ userId: 'me' })
         return formatResponse(data)
       })
@@ -1316,68 +1310,18 @@ const main = async () => {
   fs.mkdirSync(MCP_CONFIG_DIR, { recursive: true })
 
   if (process.argv[2] === 'auth') {
-    await launchAuthServer(oauth2Client)
+    if (!defaultOAuth2Client) throw new Error('OAuth2 client could not be created, please check your credentials')
+    await launchAuthServer(defaultOAuth2Client)
     process.exit(0)
   }
 
   // Stdio Server 
-  const stdioServer = createServer()
+  const stdioServer = createServer({})
   const transport = new StdioServerTransport()
   await stdioServer.connect(transport)
 
   // Streamable HTTP Server
-  const app = express()
-  app.use(express.json())
-
-  app.post('/mcp', async (req: Request, res: Response) => {
-    try {
-      const server = createServer()
-      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
-
-      res.on('close', () => {
-        transport.close()
-        server.close()
-      })
-
-      await server.connect(transport)
-      await transport.handleRequest(req, res, req.body)
-    } catch (error) {
-      if (!res.headersSent) {
-        res.status(500).json({
-          jsonrpc: '2.0',
-          error: {
-            code: -32603,
-            message: 'Internal server error',
-          },
-          id: null
-        })
-      }
-    }
-  })
-
-  app.get('/mcp', async (req: Request, res: Response) => {
-    res.writeHead(405).end(JSON.stringify({
-      jsonrpc: "2.0",
-      error: {
-        code: -32000,
-        message: "Method not allowed."
-      },
-      id: null
-    }))
-  })
-
-  app.delete('/mcp', async (req: Request, res: Response) => {
-    res.writeHead(405).end(JSON.stringify({
-      jsonrpc: "2.0",
-      error: {
-        code: -32000,
-        message: "Method not allowed."
-      },
-      id: null
-    }))
-  })
-
-  // Start the server
+  const { app } = createStatelessServer(createServer)
   app.listen(PORT)
 }
 
