@@ -14,7 +14,6 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.0",
     "@smithery/sdk": "^1.2.2",
-    "express": "^5.1.0",
     "google-auth-library": "^9.15.1",
     "googleapis": "^129.0.0",
     "open": "^9.1.0",
@@ -22,7 +21,6 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@types/express": "^5.0.1",
     "@types/node": "^20.17.27",
     "typescript": "^5.8.2"
   },

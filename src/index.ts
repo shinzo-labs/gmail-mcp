@@ -2,7 +2,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
-import { createStatelessServer } from "./smithery-sdk/stateless.js"
+import { createStatelessServer } from "@smithery/sdk/server/stateless.js"
 import { z } from "zod"
 import { google, gmail_v1 } from 'googleapis'
 import fs from "fs"
@@ -1303,7 +1303,7 @@ function createServer({ config }: { config?: Record<string, any> }) {
     }
   )
   
-  return server
+  return server.server
 }
 
 const main = async () => {
