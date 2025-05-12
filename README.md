@@ -5,7 +5,6 @@
 
 <p align="center"><img height="512" src=https://github.com/user-attachments/assets/b61db02e-bde4-4386-b5a9-2b1c6a989925></p>
 
-
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) implementation for the [Gmail](https://developers.google.com/gmail/api) API, providing a standardized interface for email management, sending, and retrieval.
 
 ## Features

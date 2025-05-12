@@ -16,9 +16,10 @@ If you would like to contribute code to the codebase, please contact austin@shin
 1. Create a fork version of the repo.
 2. Open a branch with a name prefixed with `feat/`, `fix/`, or `chore/`.
 3. Implement the desired changes.
-4. Open a Pull Request from your forked repo back to the main repo. Tag one of the core contributors as a reviewer.
-5. Once the core contributor has reviewed the code and all comments have been resolved, the PR will be approved and merged into the `main` branch.
-6. Merged changes will be added to a versioned package release on a regular schedule.
+4. Run `npx @changesets/cli` to add a `changeset` for each distinct change in your feature. Read the [changeset README](.changeset/README.md) for more info.
+5. Open a Pull Request from your forked repo back to the main repo. Tag one of the core contributors as a reviewer.
+6. Once the core contributor has reviewed the code and all comments have been resolved, the PR will be approved and merged into the `main` branch.
+7. Merged changes will be added to a versioned package release on a regular schedule.
 
 ## Contact
 
