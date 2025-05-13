@@ -127,17 +127,6 @@ describe('Gmail MCP', () => {
   })
 
   describe('Streamable HTTP Transport', () => {
-    let sessionId: string
-
-    beforeAll(async () => {
-      // const response = await sendPostRequest(jsonRpcMessage.initialize)
-      // expect(response.status).toBe(200)
-
-      // const extractedSessionId = response.headers.get("mcp-session-id")
-      // expect(extractedSessionId).toBeDefined()
-      // sessionId = extractedSessionId as string
-    })
-
     it('responds to ping', async () => {
       const response = await sendPostRequest(jsonRpcMessage.ping)
       expect(response.status).toBe(200)
