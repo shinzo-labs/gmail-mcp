@@ -1315,7 +1315,7 @@ const main = async () => {
     process.exit(0)
   }
 
-  // Stdio Server 
+  // Stdio Server
   const stdioServer = createServer({})
   const transport = new StdioServerTransport()
   await stdioServer.connect(transport)
