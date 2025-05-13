@@ -7,6 +7,8 @@ const RESPONSE_TIMEOUT = 1_000 // 1s
 const START_DELAY = 1_000 // 1s
 const TEST_TIMEOUT = 10_000 // 10s
 
+const TOTAL_TOOLS = 64
+
 const streamableClientUrl = new URL(`http://localhost:${process.env.PORT || 3000}/mcp`)
 
 jest.setTimeout(TEST_TIMEOUT)
@@ -162,7 +164,7 @@ describe('Gmail MCP', () => {
       await delay(RESPONSE_TIMEOUT)
 
       expect(readMessages).toHaveLength(1)
-      expect(readMessages[0].result.tools?.length).toEqual(65)
+      expect(readMessages[0].result.tools?.length).toEqual(TOTAL_TOOLS)
     })
 
     it('can call the get_profile tool', async () => {
@@ -240,7 +242,7 @@ describe('Gmail MCP', () => {
       expect(response.status).toBe(200)
 
       const sseResponse = await getSSEData(response)
-      expect(sseResponse.result.tools?.length).toEqual(65)
+      expect(sseResponse.result.tools?.length).toEqual(TOTAL_TOOLS)
     })
 
     it('can call the get_profile tool', async () => {

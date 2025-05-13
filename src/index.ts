@@ -352,52 +352,53 @@ function createServer({ config }: { config?: Record<string, any> }) {
     }
   )
 
-  server.tool("update_draft",
-    "Replace a draft's content. Note the mechanics of the threadId and raw parameters.",
-    {
-      id: z.string().describe("The ID of the draft to update"),
-      threadId: z.string().optional().describe("The thread ID to associate this draft with, will be copied from the current draft if not provided"),
-      raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format, ignores params.to, cc, bcc, subject, body, includeBodyHtml if provided"),
-      to: z.array(z.string()).optional().describe("List of recipient email addresses, will be copied from the current draft if not provided"),
-      cc: z.array(z.string()).optional().describe("List of CC recipient email addresses, will be copied from the current draft if not provided"),
-      bcc: z.array(z.string()).optional().describe("List of BCC recipient email addresses, will be copied from the current draft if not provided"),
-      subject: z.string().optional().describe("The subject of the email, will be copied from the current draft if not provided"),
-      body: z.string().optional().describe("The body of the email, will be copied from the current draft if not provided"),
-      includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
-    },
-    async (params) => {
-      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
-        let raw = params.raw
-        const currentDraft = await gmail.users.drafts.get({ userId: 'me', id: params.id, format: 'full' })
-        const { payload } = currentDraft.data.message ?? {}
+  // TODO debug issue with subject not being applied correctly
+  // server.tool("update_draft",
+  //   "Replace a draft's content. Note the mechanics of the threadId and raw parameters.",
+  //   {
+  //     id: z.string().describe("The ID of the draft to update"),
+  //     threadId: z.string().optional().describe("The thread ID to associate this draft with, will be copied from the current draft if not provided"),
+  //     raw: z.string().optional().describe("The entire email message in base64url encoded RFC 2822 format, ignores params.to, cc, bcc, subject, body, includeBodyHtml if provided"),
+  //     to: z.array(z.string()).optional().describe("List of recipient email addresses, will be copied from the current draft if not provided"),
+  //     cc: z.array(z.string()).optional().describe("List of CC recipient email addresses, will be copied from the current draft if not provided"),
+  //     bcc: z.array(z.string()).optional().describe("List of BCC recipient email addresses, will be copied from the current draft if not provided"),
+  //     subject: z.string().optional().describe("The subject of the email, will be copied from the current draft if not provided"),
+  //     body: z.string().optional().describe("The body of the email, will be copied from the current draft if not provided"),
+  //     includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
+  //   },
+  //   async (params) => {
+  //     return handleTool(config, async (gmail: gmail_v1.Gmail) => {
+  //       let raw = params.raw
+  //       const currentDraft = await gmail.users.drafts.get({ userId: 'me', id: params.id, format: 'full' })
+  //       const { payload } = currentDraft.data.message ?? {}
 
-        if (currentDraft.data.message?.threadId && !params.threadId) params.threadId = currentDraft.data.message.threadId
-        if (!params.to) params.to = formatEmailList(findHeader(payload?.headers || [], 'to'))
-        if (!params.cc) params.cc = formatEmailList(findHeader(payload?.headers || [], 'cc'))
-        if (!params.bcc) params.bcc = formatEmailList(findHeader(payload?.headers || [], 'bcc'))
-        if (!params.subject) params.subject = findHeader(payload?.headers || [], 'subject')
-        if (!params.body) params.body = payload?.parts?.find(p => p.mimeType === 'text/plain')?.body?.data ?? undefined
+  //       if (currentDraft.data.message?.threadId && !params.threadId) params.threadId = currentDraft.data.message.threadId
+  //       if (!params.to) params.to = formatEmailList(findHeader(payload?.headers || [], 'to'))
+  //       if (!params.cc) params.cc = formatEmailList(findHeader(payload?.headers || [], 'cc'))
+  //       if (!params.bcc) params.bcc = formatEmailList(findHeader(payload?.headers || [], 'bcc'))
+  //       if (!params.subject) params.subject = findHeader(payload?.headers || [], 'subject')
+  //       if (!params.body) params.body = payload?.parts?.find(p => p.mimeType === 'text/plain')?.body?.data ?? undefined
 
-        if (!raw) raw = await constructRawMessage(gmail, params)
+  //       if (!raw) raw = await constructRawMessage(gmail, params)
 
-        const draftUpdateParams: DraftUpdateParams = { userId: 'me', id: params.id, requestBody: { message: { raw, id: params.id } } }
-        if (params.threadId && draftUpdateParams.requestBody?.message) {
-          draftUpdateParams.requestBody.message.threadId = params.threadId
-        }
+  //       const draftUpdateParams: DraftUpdateParams = { userId: 'me', id: params.id, requestBody: { message: { raw, id: params.id } } }
+  //       if (params.threadId && draftUpdateParams.requestBody?.message) {
+  //         draftUpdateParams.requestBody.message.threadId = params.threadId
+  //       }
 
-        const { data } = await gmail.users.drafts.update(draftUpdateParams)
+  //       const { data } = await gmail.users.drafts.update(draftUpdateParams)
 
-        if (data.message?.payload) {
-          data.message.payload = processMessagePart(
-            data.message.payload,
-            params.includeBodyHtml
-          )
-        }
+  //       if (data.message?.payload) {
+  //         data.message.payload = processMessagePart(
+  //           data.message.payload,
+  //           params.includeBodyHtml
+  //         )
+  //       }
 
-        return formatResponse(data)
-      })
-    }
-  )
+  //       return formatResponse(data)
+  //     })
+  //   }
+  // )
 
   server.tool("create_label",
     "Create a new label",
