@@ -1,0 +1,36 @@
+{
+  "changesets": [
+    {
+      "releases": [
+        {
+          "name": "@shinzolabs/gmail-mcp",
+          "type": "patch"
+        }
+      ],
+      "summary": "README update",
+      "id": "forty-teeth-yawn"
+    },
+    {
+      "releases": [
+        {
+          "name": "@shinzolabs/gmail-mcp",
+          "type": "patch"
+        }
+      ],
+      "summary": "Remove changeset-status.json",
+      "id": "pretty-bushes-sneeze"
+    }
+  ],
+  "releases": [
+    {
+      "name": "@shinzolabs/gmail-mcp",
+      "type": "patch",
+      "oldVersion": "1.5.0",
+      "changesets": [
+        "forty-teeth-yawn",
+        "pretty-bushes-sneeze"
+      ],
+      "newVersion": "1.5.1"
+    }
+  ]
+}

@@ -1,5 +1,12 @@
 # @shinzolabs/gmail-mcp
 
+## 1.5.1
+
+### Patch Changes
+
+- f4896af: README update
+- 985e8d0: Remove changeset-status.json
+
 ## 1.5.0
 
 ### Minor Changes
