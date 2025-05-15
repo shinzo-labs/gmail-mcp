@@ -39,7 +39,7 @@ jobs:
       - name: Run validation script
         run: .github/scripts/validate-no-version-change.sh
         env:
-          FILE_PATH: index.js
+          FILE_PATH: src/index.ts
 
   validate-build:
     name: Validate build
