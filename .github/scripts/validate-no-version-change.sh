@@ -25,6 +25,7 @@ if [ -n "$FILE_PATH" ] && [ -f "$FILE_PATH" ]; then
   fi
 else
   echo "Warning: FILE_PATH not set or file does not exist. Skipping file version check."
+  exit 1
 fi
 
 echo "Version validation passed: $pkg_version"
