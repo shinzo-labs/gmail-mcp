@@ -1,5 +1,15 @@
 # @shinzolabs/gmail-mcp
 
+## 1.6.0
+
+### Minor Changes
+
+- df948ff: Pin Smithery SDK to last working version
+
+### Patch Changes
+
+- bb7fe96: Update CONTRIBUTING.md and test/README.md
+
 ## 1.5.1
 
 ### Patch Changes
