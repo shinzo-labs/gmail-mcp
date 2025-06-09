@@ -4,8 +4,7 @@ This directory contains tests to run against the MCP package. It currently consi
 
 ## Prerequisites
 
-- Node.js 18+ installed
-- Google project setup as describe in the main [README](../README.md)
+Be sure to follow the prerequisite installation steps from [CONTRIBUTING.md](../CONTRIBUTING.md) before trying to run the test suite. The suite will perform a few operations including creating, updating, and deleting draft emails, but the there should be no change to the account "state" at the end if all tests execute correctly.
 
 ## Running Jest E2E Tests
 
