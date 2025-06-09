@@ -19,9 +19,15 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) i
 
 ## Prerequisites
 
-To run this MCP server, you first need to set up a Google API Client for your organization, with each user running a script to retrieve their own OAuth refresh token.
+### Dependencies
 
-### Google API Client Setup (once per organization)
+For simplest installation, install [Node.js 18+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm). If you would like to build locally, you will also need to install [pnpm](https://pnpm.io/installation).
+
+### Google Workspace Setup
+
+To run this MCP server, you will need to set up a Google API Client for your organization, with each user running a script to retrieve their own OAuth refresh token.
+
+#### Google API Client Setup (once per organization)
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com).
 2. Create a new project or select an existing one.
@@ -30,7 +36,7 @@ To run this MCP server, you first need to set up a Google API Client for your or
 5. Download and save the OAuth keys JSON as `~/.gmail-mcp/gcp-oauth.keys.json`. ⚠️ NOTE: to create `~/.gmail-mcp/` through MacOS's Finder app you need to [enable hidden files](https://stackoverflow.com/questions/5891365/mac-os-x-doesnt-allow-to-name-files-starting-with-a-dot-how-do-i-name-the-hta) first.
 6. (Optional) For remote server installation (ex. using Smithery CLI), note the `CLIENT_ID` and `CLIENT_SECRET` from this file.
 
-### Client OAuth (once per user)
+#### Client OAuth (once per user)
 
 1. Have the user copy `~/.gmail-mcp/gcp-oauth.keys.json` to their computer at the same path.
 2. Run `npx @shinzolabs/gmail-mcp auth`.
