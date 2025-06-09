@@ -1303,7 +1303,7 @@ function createServer({ config }: { config?: Record<string, any> }) {
       })
     }
   )
-  
+
   return server.server
 }
 
