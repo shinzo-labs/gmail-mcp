@@ -14,6 +14,7 @@ export CLIENT_ID=
 export CLIENT_SECRET=
 export REFRESH_TOKEN=
 export PORT= #For Streamable HTTP transport if 3000 is unavailable
+```
 
 2. Run the test suite:
 ```bash
