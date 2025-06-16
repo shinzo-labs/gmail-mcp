@@ -1,5 +1,11 @@
 # @shinzolabs/gmail-mcp
 
+## 1.7.0
+
+### Minor Changes
+
+- 62cd4c3: Update dependencies
+
 ## 1.6.0
 
 ### Minor Changes
