@@ -1,6 +1,7 @@
 import { StdioClientTransport, StdioServerParameters } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { CallToolRequest, JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js'
 import path from 'path'
 
 const RESPONSE_TIMEOUT = 1_000 // 1s
@@ -25,21 +26,19 @@ type ReadMessageType = {
   }
 }
 
+type JSONRPCMessageWithParams = JSONRPCMessage & {
+  params?: CallToolRequest["params"]
+}
+
 // In some tests the argument IDs in this object are modified, ensure the ID is always set per-test where relevant
-const jsonRpcMessage: Record<string, JSONRPCMessage> = {
+const jsonRpcMessage: Record<string, JSONRPCMessageWithParams> = {
   ping: { jsonrpc: "2.0", id: 1, method: "ping" },
   pong: { jsonrpc: '2.0', id: 1, result: {} },
-  initialize: {
-    jsonrpc: "2.0", id: 1, method: "initialize", params: {
-      clientInfo: { name: "test-client", version: "1.0" },
-      protocolVersion: "2025-05-13",
-      capabilities: {},
-    }
-  },
   toolsList: { jsonrpc: "2.0", id: 1, method: "tools/list" },
   getProfile: {
     jsonrpc: "2.0", id: 1, method: "tools/call", params: {
-      name: "get_profile"
+      name: "get_profile",
+      arguments: {}
     }
   },
   createDraft: {
@@ -92,27 +91,6 @@ const jsonRpcMessage: Record<string, JSONRPCMessage> = {
 }
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-
-const sendPostRequest = async (message: JSONRPCMessage | JSONRPCMessage[], sessionId?: string) => (
-  fetch(streamableClientUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json, text/event-stream",
-      ...(sessionId ? { "mcp-session-id": sessionId } : {}),
-    },
-    body: JSON.stringify(message),
-  })
-)
-
-const getSSEData = async (response: Response) => {
-  const reader = response.body?.getReader()
-  const { value } = await reader!.read()
-  const text = new TextDecoder().decode(value)
-  const dataLine = text.split('\n').find(line => line.startsWith('data:'))
-  expect(dataLine).toBeDefined()
-  return JSON.parse(dataLine!.slice(5).trim())
-}
 
 describe('Gmail MCP', () => {
   let stdioClient: StdioClientTransport
@@ -204,7 +182,8 @@ describe('Gmail MCP', () => {
     })
 
     it('can call the get_draft tool', async () => {
-      jsonRpcMessage.getDraft["params"].arguments.id = draftId // Beware this modifies the original object
+      const params = jsonRpcMessage.getDraft.params as CallToolRequest["params"]
+      if (params?.arguments) params.arguments.id = draftId
       stdioClient.send(jsonRpcMessage.getDraft)
       await delay(RESPONSE_TIMEOUT)
 
@@ -217,7 +196,8 @@ describe('Gmail MCP', () => {
     })
 
     it('can call the delete_draft tool', async () => {
-      jsonRpcMessage.deleteDraft["params"].arguments.id = draftId // Beware this modifies the original object
+      const params = jsonRpcMessage.deleteDraft.params as CallToolRequest["params"]
+      if (params?.arguments) params.arguments.id = draftId
       stdioClient.send(jsonRpcMessage.deleteDraft)
       await delay(RESPONSE_TIMEOUT)
 
@@ -227,94 +207,82 @@ describe('Gmail MCP', () => {
   })
 
   describe('Streamable HTTP Transport', () => {
+    let streamableClient: Client = new Client({
+      name: 'streamable-test-client',
+      version: '1.0.0'
+    })
+
     let draftId: string
 
-    it('responds to ping', async () => {
-      const response = await sendPostRequest(jsonRpcMessage.ping)
-      expect(response.status).toBe(200)
+    beforeAll(async () => {
+      let transport = new StreamableHTTPClientTransport(streamableClientUrl)
+      await streamableClient.connect(transport)
+    })
 
-      const sseResponse = await getSSEData(response)
-      expect(sseResponse).toEqual(jsonRpcMessage.pong)
+    it('responds to ping', async () => {
+      const response = await streamableClient.ping()
+      expect(response).toEqual({})
     })
 
     it('returns a list of tools', async () => {
-      const response = await sendPostRequest(jsonRpcMessage.toolsList)
-      expect(response.status).toBe(200)
-
-      const sseResponse = await getSSEData(response)
-      expect(sseResponse.result.tools?.length).toEqual(TOTAL_TOOLS)
+      const response = await streamableClient.listTools()
+      expect(response.tools.length).toEqual(TOTAL_TOOLS)
     })
 
     it('can call the get_profile tool', async () => {
-      const response = await sendPostRequest(jsonRpcMessage.getProfile)
-      expect(response.status).toBe(200)
+      const params = jsonRpcMessage.getProfile.params as CallToolRequest["params"]
+      const response = await streamableClient.callTool(params)
 
-      const sseResponse = await getSSEData(response)
-      expect(sseResponse.result.content?.length).toEqual(1)
-
-      const firstMessage = JSON.parse(sseResponse.result.content?.[0].text ?? '{}')
+      const firstMessage = JSON.parse(response.content?.[0].text ?? '{}')
       expect(firstMessage.emailAddress).toBeDefined()
       expect(firstMessage.messagesTotal).toBeDefined()
       expect(firstMessage.historyId).toBeDefined()
     })
 
     it('can call the create_draft tool', async () => {
-      const response = await sendPostRequest(jsonRpcMessage.createDraft)
-      expect(response.status).toBe(200)
+      const params = jsonRpcMessage.createDraft.params as CallToolRequest["params"]
+      const response = await streamableClient.callTool(params)
 
-      const sseResponse = await getSSEData(response)
-      expect(sseResponse.result.content?.length).toEqual(1)
-
-      draftId = JSON.parse(sseResponse.result.content?.[0].text).id
+      draftId = JSON.parse(response.content?.[0].text ?? '{}').id
       expect(draftId).toBeDefined()
     })
 
     it('can call the list_drafts tool', async () => {
-      const response = await sendPostRequest(jsonRpcMessage.listDrafts)
-      expect(response.status).toBe(200)
+      const params = jsonRpcMessage.listDrafts.params as CallToolRequest["params"]
+      const response = await streamableClient.callTool(params)
 
-      const sseResponse = await getSSEData(response)
-      expect(sseResponse.result.content?.length).toEqual(1)
-
-      const draftsList = JSON.parse(sseResponse.result.content?.[0].text)
+      const draftsList = JSON.parse(response.content?.[0].text ?? '{}')
       const createdDraft = draftsList.find((draft: any) => draft.id === draftId)
       expect(createdDraft).toBeDefined()
     })
 
     it('can call the get_draft tool', async () => {
-      jsonRpcMessage.getDraft["params"].arguments.id = draftId // Beware this modifies the original object
-      const response = await sendPostRequest(jsonRpcMessage.getDraft)
-      expect(response.status).toBe(200)
+      const params = jsonRpcMessage.getDraft.params as CallToolRequest["params"]
+      if (params?.arguments) params.arguments.id = draftId
+      const response = await streamableClient.callTool(params)
 
-      const getDraftSseResponse = await getSSEData(response)
-      expect(getDraftSseResponse.result.content?.length).toEqual(1)
-
-      const draftEmail = JSON.parse(getDraftSseResponse.result.content?.[0].text)
+      const draftEmail = JSON.parse(response.content?.[0].text ?? '{}')
       expect(draftEmail.message.labelIds).toContain("DRAFT")
       expect(draftEmail.message.snippet).toEqual("Test Body")
     })
 
     // it('can call the update_draft tool', async () => {
-    //   jsonRpcMessage.updateDraft["params"].arguments.id = draftId // Beware this modifies the original object
-    //   const response = await sendPostRequest(jsonRpcMessage.updateDraft)
-    //   expect(response.status).toBe(200)
+    //   const params = jsonRpcMessage.updateDraft.params as CallToolRequest["params"]
+    //   if (params?.arguments) params.arguments.id = draftId
+    //   const response = await streamableClient.callTool(params)
 
-    //   const updateDraftSseResponse = await getSSEData(response)
-    //   expect(updateDraftSseResponse.result.content?.length).toEqual(1)
-
-    //   const updatedDraft = JSON.parse(updateDraftSseResponse.result.content?.[0].text)
+    //   const updatedDraft = JSON.parse(response.content?.[0].text ?? '{}')
     //   console.log(updatedDraft)
     //   expect(updatedDraft.message.labelIds).toContain("DRAFT")
     //   // expect(updatedDraft.message.snippet).toEqual("Updated Body") // TODO this test fails, update before uncommenting the update_draft method
     // })
 
     it('can call the delete_draft tool', async () => {
-      jsonRpcMessage.deleteDraft["params"].arguments.id = draftId // Beware this modifies the original object
-      const response = await sendPostRequest(jsonRpcMessage.deleteDraft)
-      expect(response.status).toBe(200)
+      const params = jsonRpcMessage.deleteDraft.params as CallToolRequest["params"]
+      if (params?.arguments) params.arguments.id = draftId
+      const response = await streamableClient.callTool(params)
 
-      const deleteDraftSseResponse = await getSSEData(response)
-      expect(deleteDraftSseResponse.result.content?.length).toEqual(1)
+      expect(response.content?.[0].text).toEqual('\"\"')
     })
   })
 })
