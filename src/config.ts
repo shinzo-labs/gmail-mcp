@@ -10,3 +10,4 @@ export const PORT = process.env.PORT || 3000
 export const CLIENT_ID = process.env.CLIENT_ID || ''
 export const CLIENT_SECRET = process.env.CLIENT_SECRET || ''
 export const REFRESH_TOKEN = process.env.REFRESH_TOKEN || ''
+export const REFRESH_TOKENS = process.env.REFRESH_TOKENS || ''

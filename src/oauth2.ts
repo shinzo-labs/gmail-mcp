@@ -1,4 +1,4 @@
-import { AUTH_SERVER_PORT, CLIENT_ID, CLIENT_SECRET, GMAIL_CREDENTIALS_PATH, GMAIL_OAUTH_PATH, REFRESH_TOKEN } from "./config.js"
+import { AUTH_SERVER_PORT, CLIENT_ID, CLIENT_SECRET, GMAIL_CREDENTIALS_PATH, GMAIL_OAUTH_PATH, REFRESH_TOKEN, REFRESH_TOKENS } from "./config.js"
 import { OAuth2Client } from "google-auth-library"
 import fs from "fs"
 import http from "http"
@@ -16,10 +16,15 @@ const getEnvBasedCredentials = (queryConfig?: Record<string, any>) => {
   const clientId = queryConfig?.CLIENT_ID || CLIENT_ID
   const clientSecret = queryConfig?.CLIENT_SECRET || CLIENT_SECRET
   const refreshToken = queryConfig?.REFRESH_TOKEN || REFRESH_TOKEN
+  let refreshTokens = queryConfig?.REFRESH_TOKENS || REFRESH_TOKENS
 
-  if (!clientId || !clientSecret || !refreshToken) return null
+  if (!clientId || !clientSecret || !(refreshTokens || refreshToken)) return null
 
-  return { clientId, clientSecret, refreshToken }
+  const refreshTokensArray = refreshTokens ? refreshTokens.split(',') : []
+  if (!refreshTokensArray.includes(refreshToken)) refreshTokensArray.push(refreshToken)
+  refreshTokens = refreshTokensArray.join(',')
+
+  return { clientId, clientSecret, refreshTokens }
 }
 
 const getFileBasedCredentials = () => {
@@ -38,7 +43,7 @@ const getFileBasedCredentials = () => {
     refreshToken = gmailCredentialsFile?.refresh_token
   }
 
-  return { clientId, clientSecret, refreshToken }
+  return { clientId, clientSecret, refreshTokens }
 }
 
 export const createOAuth2Client = (queryConfig?: Record<string, any>) => {
