@@ -1,11 +1,16 @@
-# Gmail MCP
+<div align="center">
+    <h1 align="center">Gmail MCP Server</h1>
+    <p align=center>
+        <a href="https://badge.fury.io/js/@shinzolabs%2Fgmail-mcp"><img src="https://badge.fury.io/js/@shinzolabs%2Fgmail-mcp.svg" alt="NPM Version"></a>
+        <a href="https://github.com/shinzo-labs/gmail-mcp/stargazers"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2Fshinzo-labs%2Fgmail-mcp%2Fstargazers&query=%24.length&logo=github&label=stars&color=e3b341" alt="Stars"></a>
+        <a href="https://github.com/shinzo-labs/gmail-mcp/forks"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2Fshinzo-labs%2Fgmail-mcp%2Fforks&query=%24.length&logo=github&label=forks&color=8957e5" alt="Forks"></a>
+        <a href="https://smithery.ai/server/@shinzo-labs/gmail-mcp"><img src="https://smithery.ai/badge/@shinzo-labs/gmail-mcp" alt="Smithery Calls"></a>
+        <a href="https://www.npmjs.com/package/@shinzolabs/gmail-mcp"><img src="https://img.shields.io/npm/dm/%40shinzolabs%2Fgmail-mcp" alt="NPM Downloads"></a>
+</div>
 
-[![npm version](https://badge.fury.io/js/@shinzolabs%2Fgmail-mcp.svg)](https://badge.fury.io/js/@shinzolabs%2Fgmail-mcp)
-[![smithery badge](https://smithery.ai/badge/@shinzo-labs/gmail-mcp)](https://smithery.ai/server/@shinzo-labs/gmail-mcp)
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) server implementation for the [Gmail](https://developers.google.com/gmail/api) API, providing a standardized interface for email management, sending, and retrieval.
 
 <p align="center"><img height="512" src=https://github.com/user-attachments/assets/b61db02e-bde4-4386-b5a9-2b1c6a989925></p>
-
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) implementation for the [Gmail](https://developers.google.com/gmail/api) API, providing a standardized interface for email management, sending, and retrieval.
 
 ## Features
 
