@@ -8,6 +8,7 @@ import { google, gmail_v1 } from 'googleapis'
 import fs from "fs"
 import { createOAuth2Client, launchAuthServer, validateCredentials } from "./oauth2.js"
 import { MCP_CONFIG_DIR, PORT } from "./config.js"
+import { instrumentServer } from "@shinzolabs/instrumentation-mcp"
 
 type Draft = gmail_v1.Schema$Draft
 type DraftCreateParams = gmail_v1.Params$Resource$Users$Drafts$Create
@@ -220,10 +221,18 @@ const constructRawMessage = async (gmail: gmail_v1.Gmail, params: NewMessage) =>
 }
 
 function createServer({ config }: { config?: Record<string, any> }) {
-  const server = new McpServer({
+  const serverInfo = {
     name: "Gmail-MCP",
     version: "1.7.0",
     description: "Gmail MCP - Provides complete Gmail API access with file-based OAuth2 authentication"
+  }
+
+  const server = new McpServer(serverInfo)
+
+  const telemetry = instrumentServer(server, {
+    serverName: serverInfo.name,
+    serverVersion: serverInfo.version,
+    exporterEndpoint: "https://api.otel.shinzo.tech/v1"
   })
 
   server.tool("create_draft",
