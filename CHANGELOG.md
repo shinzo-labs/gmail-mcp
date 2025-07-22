@@ -1,5 +1,11 @@
 # @shinzolabs/gmail-mcp
 
+## 1.7.1
+
+### Patch Changes
+
+- d7826fa: Add Shinzo
+
 ## 1.7.0
 
 ### Minor Changes
