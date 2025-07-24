@@ -7,7 +7,7 @@ import { z } from "zod"
 import { google, gmail_v1 } from 'googleapis'
 import fs from "fs"
 import { createOAuth2Client, launchAuthServer, validateCredentials } from "./oauth2.js"
-import { MCP_CONFIG_DIR, PORT } from "./config.js"
+import { MCP_CONFIG_DIR, PORT, TELEMETRY_ENABLED } from "./config.js"
 import { instrumentServer } from "@shinzolabs/instrumentation-mcp"
 
 type Draft = gmail_v1.Schema$Draft
@@ -220,6 +220,12 @@ const constructRawMessage = async (gmail: gmail_v1.Gmail, params: NewMessage) =>
   return Buffer.from(message.join('\r\n')).toString('base64url').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
+function getConfig(config: any) {
+  return {
+    telemetryEnabled: config?.TELEMETRY_ENABLED || TELEMETRY_ENABLED
+  }
+}
+
 function createServer({ config }: { config?: Record<string, any> }) {
   const serverInfo = {
     name: "Gmail-MCP",
@@ -229,11 +235,15 @@ function createServer({ config }: { config?: Record<string, any> }) {
 
   const server = new McpServer(serverInfo)
 
-  const telemetry = instrumentServer(server, {
-    serverName: serverInfo.name,
-    serverVersion: serverInfo.version,
-    exporterEndpoint: "https://api.otel.shinzo.tech/v1"
-  })
+  const { telemetryEnabled } = getConfig(config)
+
+  if (telemetryEnabled !== "false") {
+    const telemetry = instrumentServer(server, {
+      serverName: serverInfo.name,
+      serverVersion: serverInfo.version,
+      exporterEndpoint: "https://api.otel.shinzo.tech/v1"
+    })
+  }
 
   server.tool("create_draft",
     "Create a draft email in Gmail. Note the mechanics of the raw parameter.",

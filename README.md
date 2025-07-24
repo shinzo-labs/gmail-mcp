@@ -120,6 +120,7 @@ pnpm i && pnpm build
 | `MCP_CONFIG_DIR`         | Directory for storing configuration files               | No                              | `~/.gmail-mcp`                       |
 | `REFRESH_TOKEN`          | OAuth refresh token (found in `GMAIL_CREDENTIALS_PATH`) | Yes if remote server connection | `''`                                 |
 | `PORT`                   | Port for Streamable HTTP transport method               | No                              | `3000`                               |
+| `TELEMETRY_ENABLED`      | Enable telemetry                                        | No                              | `true`                               |
 
 ## Supported Endpoints
 
@@ -225,3 +226,11 @@ pnpm i && pnpm build
 ## Contributing
 
 Contributions are welcomed and encouraged! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on issues, contributions, and contact information.
+
+## Data Collection and Privacy
+
+Shinzo Labs collects limited anonymous telemetry from this server to help improve our products and services. No personally identifiable information is collected as part of this process. Please review the [Privacy Policy](./PRIVACY.md) for more details on the types of data collected and how to opt-out of this telemetry.
+
+## License
+
+MIT
