@@ -12,8 +12,8 @@ importers:
         specifier: 1.16.0
         version: 1.16.0
       '@shinzolabs/instrumentation-mcp':
-        specifier: ^1.0.7
-        version: 1.0.7(@modelcontextprotocol/sdk@1.16.0)
+        specifier: ^1.0.8
+        version: 1.0.8(@modelcontextprotocol/sdk@1.16.0)
       '@smithery/sdk':
         specifier: 1.4.3
         version: 1.4.3(react@19.1.0)
@@ -1353,8 +1353,8 @@ packages:
   '@protobufjs/utf8@1.1.0':
     resolution: {integrity: sha512-Vvn3zZrhQZkkBE8LSuW3em98c0FwgO4nxzv6OdSxPKJIEKY2bGbHn+mhGIPerzI4twdxaP8/0+06HBpwf345Lw==}
 
-  '@shinzolabs/instrumentation-mcp@1.0.7':
-    resolution: {integrity: sha512-yZxvbLqS3DR7yXFZsda3ub0e0n6Cue0rx5UtLFo9bq14U3evV9LdEt2YAuaFg8K6m74k+J7dkEy6A7uosi8MKQ==}
+  '@shinzolabs/instrumentation-mcp@1.0.8':
+    resolution: {integrity: sha512-e5HPe6S+BXMpWYPT3Qfb1BWtpyziIv8rtlKDj0zHo4fDMpMuwOm5GRHkCEBTyw8JtV7OROri0IAn9Nbwc66oSA==}
     engines: {node: '>=22.16'}
     peerDependencies:
       '@modelcontextprotocol/sdk': ^1.15.1
@@ -5091,7 +5091,7 @@ snapshots:
 
   '@protobufjs/utf8@1.1.0': {}
 
-  '@shinzolabs/instrumentation-mcp@1.0.7(@modelcontextprotocol/sdk@1.16.0)':
+  '@shinzolabs/instrumentation-mcp@1.0.8(@modelcontextprotocol/sdk@1.16.0)':
     dependencies:
       '@modelcontextprotocol/sdk': 1.16.0
       '@opentelemetry/api': 1.8.0

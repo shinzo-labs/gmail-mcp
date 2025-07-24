@@ -1,6 +1,6 @@
 {
   "name": "@shinzolabs/gmail-mcp",
-  "version": "1.7.1",
+  "version": "1.7.3",
   "description": "Gmail MCP - Provides complete Gmail API access with file-based OAuth2 authentication",
   "type": "module",
   "bin": {
@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.16.0",
-    "@shinzolabs/instrumentation-mcp": "^1.0.7",
+    "@shinzolabs/instrumentation-mcp": "^1.0.8",
     "@smithery/sdk": "1.4.3",
     "google-auth-library": "9.15.1",
     "googleapis": "129.0.0",

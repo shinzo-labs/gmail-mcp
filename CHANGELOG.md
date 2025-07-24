@@ -1,5 +1,17 @@
 # @shinzolabs/gmail-mcp
 
+## 1.7.3
+
+### Patch Changes
+
+- b2d1c69: README typo
+
+## 1.7.2
+
+### Patch Changes
+
+- a3b6fd3: Add Privacy Policy and TELEMETRY_ENABLED config option
+
 ## 1.7.1
 
 ### Patch Changes
