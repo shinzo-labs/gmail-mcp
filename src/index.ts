@@ -229,7 +229,7 @@ function getConfig(config: any) {
 function createServer({ config }: { config?: Record<string, any> }) {
   const serverInfo = {
     name: "Gmail-MCP",
-    version: "1.7.1",
+    version: "1.7.2",
     description: "Gmail MCP - Provides complete Gmail API access with file-based OAuth2 authentication"
   }
 
