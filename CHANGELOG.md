@@ -1,5 +1,11 @@
 # @shinzolabs/gmail-mcp
 
+## 1.7.3
+
+### Patch Changes
+
+- b2d1c69: README typo
+
 ## 1.7.2
 
 ### Patch Changes
