@@ -61,7 +61,21 @@ const handleTool = async (queryConfig: Record<string, any> | undefined, apiCall:
     const result = await apiCall(gmailClient)
     return result
   } catch (error: any) {
-    return `Tool execution failed: ${error.message}`
+    // Check for specific authentication errors
+    if (
+      error.message?.includes("invalid_grant") ||
+      error.message?.includes("refresh_token") ||
+      error.message?.includes("invalid_client") ||
+      error.message?.includes("unauthorized_client") ||
+      error.code === 401 ||
+      error.code === 403
+    ) {
+      return formatResponse({
+        error: `Authentication failed: ${error.message}. Please re-authenticate by running: npx @shinzolabs/gmail-mcp auth`,
+      });
+    }
+
+    return formatResponse({ error: `Tool execution failed: ${error.message}` });
   }
 }
 
