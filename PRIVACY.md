@@ -81,6 +81,6 @@ We may update this privacy policy from time to time. Any changes will be posted 
 
 If you have any questions about this privacy policy or our data practices, please contact [Shinzo Labs](mailto:austin@shinzolabs.com).
 
-## Acknolwedgements
+## Acknowledgements
 
 This policy is adapted from the [Privacy Policy for DesktopCommanderMCP](https://github.com/wonderwhy-er/DesktopCommanderMCP/blob/main/PRIVACY.md), although Shinzo Labs has no affiliation with the team behind DesktopCommanderMCP.
