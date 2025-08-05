@@ -1,5 +1,11 @@
 # @shinzolabs/gmail-mcp
 
+## 1.7.4
+
+### Patch Changes
+
+- 61269f9: Return formatted response for error cases
+
 ## 1.7.3
 
 ### Patch Changes
