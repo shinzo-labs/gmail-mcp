@@ -134,6 +134,7 @@ pnpm i && pnpm build
 #### Managing Messages
 - `list_messages`: List messages with optional filtering
 - `get_message`: Get a specific message
+- `get_message_summary`: Get a message summary with essential fields only
 - `get_attachment`: Get a message attachment
 - `modify_message`: Modify message labels
 - `send_message`: Send an email message to specified recipients
