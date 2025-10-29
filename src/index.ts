@@ -47,6 +47,11 @@ const defaultGmailClient = defaultOAuth2Client ? google.gmail({ version: 'v1', a
 
 const formatResponse = (response: any) => ({ content: [{ type: "text", text: JSON.stringify(response) }] })
 
+const estimateTokens = (text: string): number => Math.ceil(text.length / 4)
+
+const MAX_TOKENS_PER_RESPONSE = 22500
+const TOKEN_OVERLAP = 250
+
 const handleTool = async (queryConfig: Record<string, any> | undefined, apiCall: (gmail: gmail_v1.Gmail) => Promise<any>) => {
   try {
     const oauth2Client = queryConfig ? createOAuth2Client(queryConfig) : defaultOAuth2Client
@@ -331,9 +336,9 @@ function createServer({ config }: { config?: Record<string, any> }) {
   )
 
   server.tool("list_drafts",
-    "List drafts in the user's mailbox",
+    "List drafts in the user's mailbox. Note: Unlike list_messages, this returns full draft content which can use significant tokens if you have many drafts. Consider limiting maxResults.",
     {
-      maxResults: z.number().optional().describe("Maximum number of drafts to return. Accepts values between 1-500"),
+      maxResults: z.number().optional().describe("Maximum number of drafts to return. Accepts values between 1-500. Recommended: Keep under 20 to manage context usage."),
       q: z.string().optional().describe("Only return drafts matching the specified query. Supports the same query format as the Gmail search box"),
       includeSpamTrash: z.boolean().optional().describe("Include drafts from SPAM and TRASH in the results"),
       includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large"),
@@ -573,10 +578,11 @@ function createServer({ config }: { config?: Record<string, any> }) {
   )
 
   server.tool("get_message",
-    "Get a specific message by ID with format options",
+    "CONTEXT WARNING: Returns FULL message content which can use 1,000-50,000+ tokens per message depending on email length and thread history. Automatically truncates at 22,500 tokens with pagination support. For most use cases, use 'get_message_summary' instead which uses ~100-200 tokens. Only use this tool when you need complete message details.",
     {
       id: z.string().describe("The ID of the message to retrieve"),
-      includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
+      includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large"),
+      tokenOffset: z.number().optional().describe("Token offset for pagination. Use the 'nextTokenOffset' from previous response to fetch the next chunk. Includes 250-token overlap with previous chunk for context continuity.")
     },
     async (params) => {
       return handleTool(config, async (gmail: gmail_v1.Gmail) => {
@@ -586,15 +592,235 @@ function createServer({ config }: { config?: Record<string, any> }) {
           data.payload = processMessagePart(data.payload, params.includeBodyHtml)
         }
 
-        return formatResponse(data)
+        // Convert to JSON string to measure tokens
+        const fullJson = JSON.stringify(data, null, 2)
+        const totalTokens = estimateTokens(fullJson)
+
+        // If under limit, return as-is
+        if (totalTokens <= MAX_TOKENS_PER_RESPONSE) {
+          return formatResponse({
+            ...data,
+            _metadata: {
+              totalTokens,
+              truncated: false
+            }
+          })
+        }
+
+        // Calculate pagination
+        const tokenOffset = params.tokenOffset || 0
+        const charOffset = tokenOffset * 4 // Approximate chars from tokens
+        const overlapChars = TOKEN_OVERLAP * 4
+
+        // Start position with overlap (but not before 0)
+        const startPos = Math.max(0, charOffset - overlapChars)
+        const maxChars = MAX_TOKENS_PER_RESPONSE * 4
+        const endPos = Math.min(fullJson.length, startPos + maxChars)
+
+        const chunk = fullJson.substring(startPos, endPos)
+        const hasMore = endPos < fullJson.length
+        const nextOffset = hasMore ? Math.ceil(endPos / 4) : null
+
+        // Try to parse the chunk as valid JSON, otherwise return as text
+        let response
+        try {
+          response = JSON.parse(chunk)
+        } catch {
+          // If chunk isn't valid JSON, return structured response with text
+          response = {
+            id: data.id,
+            threadId: data.threadId,
+            _chunkContent: chunk,
+            _note: "This is a partial response. The JSON was truncated mid-structure. Use tokenOffset parameter to fetch next chunk."
+          }
+        }
+
+        return formatResponse({
+          ...response,
+          _metadata: {
+            totalTokens,
+            truncated: true,
+            currentChunk: {
+              startToken: Math.ceil(startPos / 4),
+              endToken: Math.ceil(endPos / 4),
+              tokens: estimateTokens(chunk)
+            },
+            hasMore,
+            nextTokenOffset: nextOffset,
+            overlapTokens: tokenOffset > 0 ? TOKEN_OVERLAP : 0,
+            message: hasMore
+              ? `This message is too large (${totalTokens} tokens). Showing tokens ${Math.ceil(startPos / 4)}-${Math.ceil(endPos / 4)}. Call again with tokenOffset: ${nextOffset} to fetch the next chunk.`
+              : `This is the final chunk of the message (${totalTokens} tokens total).`
+          }
+        })
+      })
+    }
+  )
+
+  server.tool("get_message_summary",
+    "RECOMMENDED: Get a concise message summary with only essential fields (To, From, Subject, Date, body). Uses ~100-200 tokens instead of 1,000-50,000+ tokens. Automatically paginates at 22,500 tokens if body is very long. Perfect for browsing emails, checking inbox, or when you need to process multiple messages efficiently.",
+    {
+      id: z.string().describe("The ID of the message to retrieve"),
+      maxBodyLength: z.number().optional().describe("Maximum characters of body text to return per page (default: unlimited). If body exceeds this, will be paginated across multiple chunks."),
+      tokenOffset: z.number().optional().describe("Token offset for pagination. Use the 'nextTokenOffset' from previous response to fetch the next chunk. Includes 250-token overlap with previous chunk for context continuity.")
+    },
+    async (params) => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
+        const { data } = await gmail.users.messages.get({ userId: 'me', id: params.id, format: 'full' })
+
+        // Extract body text first
+        const getBodyText = (part: MessagePart): string => {
+          if (part.mimeType === 'text/plain' && part.body?.data) {
+            const decoded = Buffer.from(part.body.data, 'base64').toString('utf-8')
+            return decoded
+          }
+          if (part.parts) {
+            for (const subPart of part.parts) {
+              const text = getBodyText(subPart)
+              if (text) return text
+            }
+          }
+          return ''
+        }
+
+        let bodyText = ''
+        if (data.payload) {
+          bodyText = getBodyText(data.payload)
+        }
+
+        // Build base summary structure
+        const baseSummary: any = {
+          id: data.id,
+          threadId: data.threadId,
+          labelIds: data.labelIds,
+          snippet: data.snippet,
+          internalDate: data.internalDate
+        }
+
+        // Extract headers
+        if (data.payload?.headers) {
+          const headers: any = {}
+          const essentialHeaders = ['From', 'To', 'Cc', 'Bcc', 'Subject', 'Date']
+
+          for (const header of data.payload.headers) {
+            if (header.name && essentialHeaders.includes(header.name)) {
+              headers[header.name.toLowerCase()] = header.value
+            }
+          }
+          baseSummary.headers = headers
+        }
+
+        // Handle body pagination if maxBodyLength is set
+        if (params.maxBodyLength && bodyText.length > params.maxBodyLength) {
+          const tokenOffset = params.tokenOffset || 0
+          const charOffset = tokenOffset * 4
+          const overlapChars = TOKEN_OVERLAP * 4
+
+          const startPos = Math.max(0, charOffset - overlapChars)
+          const endPos = Math.min(bodyText.length, startPos + params.maxBodyLength)
+
+          const bodyChunk = bodyText.substring(startPos, endPos)
+          const hasMore = endPos < bodyText.length
+          const nextOffset = hasMore ? Math.ceil(endPos / 4) : null
+
+          baseSummary.body = bodyChunk
+          baseSummary._metadata = {
+            totalBodyLength: bodyText.length,
+            bodyPaginated: true,
+            currentChunk: {
+              startChar: startPos,
+              endChar: endPos,
+              tokens: estimateTokens(bodyChunk)
+            },
+            hasMore,
+            nextTokenOffset: nextOffset,
+            overlapChars: tokenOffset > 0 ? overlapChars : 0,
+            message: hasMore
+              ? `Body is ${bodyText.length} characters. Showing chars ${startPos}-${endPos}. Call again with tokenOffset: ${nextOffset} to fetch the next chunk.`
+              : `This is the final chunk of the body (${bodyText.length} characters total).`
+          }
+
+          // Check if entire response exceeds token limit
+          const summaryJson = JSON.stringify(baseSummary, null, 2)
+          const summaryTokens = estimateTokens(summaryJson)
+
+          if (summaryTokens <= MAX_TOKENS_PER_RESPONSE) {
+            return formatResponse(baseSummary)
+          }
+
+          // If still too large, apply token-level pagination
+          baseSummary._metadata.note = "Response exceeded 22,500 token limit even after body pagination. This is rare."
+        } else {
+          // No maxBodyLength specified, include full body
+          baseSummary.body = bodyText
+          baseSummary.bodyLength = bodyText.length
+        }
+
+        // Apply token-level pagination to entire summary if needed
+        const fullJson = JSON.stringify(baseSummary, null, 2)
+        const totalTokens = estimateTokens(fullJson)
+
+        if (totalTokens <= MAX_TOKENS_PER_RESPONSE) {
+          return formatResponse({
+            ...baseSummary,
+            _metadata: {
+              ...baseSummary._metadata,
+              totalTokens,
+              truncated: false
+            }
+          })
+        }
+
+        // Paginate entire response
+        const tokenOffset = params.tokenOffset || 0
+        const charOffset = tokenOffset * 4
+        const overlapChars = TOKEN_OVERLAP * 4
+
+        const startPos = Math.max(0, charOffset - overlapChars)
+        const maxChars = MAX_TOKENS_PER_RESPONSE * 4
+        const endPos = Math.min(fullJson.length, startPos + maxChars)
+
+        const chunk = fullJson.substring(startPos, endPos)
+        const hasMore = endPos < fullJson.length
+        const nextOffset = hasMore ? Math.ceil(endPos / 4) : null
+
+        let response
+        try {
+          response = JSON.parse(chunk)
+        } catch {
+          response = {
+            id: data.id,
+            _chunkContent: chunk,
+            _note: "This is a partial response. The JSON was truncated mid-structure. Use tokenOffset parameter to fetch next chunk."
+          }
+        }
+
+        return formatResponse({
+          ...response,
+          _metadata: {
+            totalTokens,
+            truncated: true,
+            currentChunk: {
+              startToken: Math.ceil(startPos / 4),
+              endToken: Math.ceil(endPos / 4),
+              tokens: estimateTokens(chunk)
+            },
+            hasMore,
+            nextTokenOffset: nextOffset,
+            overlapTokens: tokenOffset > 0 ? TOKEN_OVERLAP : 0,
+            message: hasMore
+              ? `Summary is too large (${totalTokens} tokens). Showing tokens ${Math.ceil(startPos / 4)}-${Math.ceil(endPos / 4)}. Call again with tokenOffset: ${nextOffset} to fetch the next chunk.`
+              : `This is the final chunk of the summary (${totalTokens} tokens total).`
+          }
+        })
       })
     }
   )
 
   server.tool("list_messages",
-    "List messages in the user's mailbox with optional filtering",
+    "List messages in the user's mailbox with optional filtering. Returns only message IDs and thread IDs (minimal token usage). After listing, use 'get_message_summary' to retrieve details for specific messages efficiently (~100-200 tokens each). Avoid using 'get_message' on multiple messages as it can consume 1,000-50,000+ tokens per message.",
     {
-      maxResults: z.number().optional().describe("Maximum number of messages to return. Accepts values between 1-500"),
+      maxResults: z.number().optional().describe("Maximum number of messages to return. Accepts values between 1-500. Recommended: Keep under 20 if you plan to fetch details afterward to avoid context issues."),
       pageToken: z.string().optional().describe("Page token to retrieve a specific page of results"),
       q: z.string().optional().describe("Only return messages matching the specified query. Supports the same query format as the Gmail search box"),
       labelIds: z.array(z.string()).optional().describe("Only return messages with labels that match all of the specified label IDs"),
@@ -727,10 +953,11 @@ function createServer({ config }: { config?: Record<string, any> }) {
   )
 
   server.tool("get_thread",
-    "Get a specific thread by ID",
+    "CONTEXT WARNING: Returns FULL thread content with ALL messages in the conversation. Can use 10,000-100,000+ tokens for threads with multiple messages. Automatically truncates at 22,500 tokens with pagination support. Consider using 'list_messages' with a threadId filter + 'get_message_summary' for individual messages as a more efficient alternative.",
     {
       id: z.string().describe("The ID of the thread to retrieve"),
-      includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
+      includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large"),
+      tokenOffset: z.number().optional().describe("Token offset for pagination. Use the 'nextTokenOffset' from previous response to fetch the next chunk. Includes 250-token overlap with previous chunk for context continuity.")
     },
     async (params) => {
       return handleTool(config, async (gmail: gmail_v1.Gmail) => {
@@ -745,15 +972,72 @@ function createServer({ config }: { config?: Record<string, any> }) {
           })
         }
 
-        return formatResponse(data)
+        // Convert to JSON string to measure tokens
+        const fullJson = JSON.stringify(data, null, 2)
+        const totalTokens = estimateTokens(fullJson)
+
+        // If under limit, return as-is
+        if (totalTokens <= MAX_TOKENS_PER_RESPONSE) {
+          return formatResponse({
+            ...data,
+            _metadata: {
+              totalTokens,
+              truncated: false
+            }
+          })
+        }
+
+        // Calculate pagination
+        const tokenOffset = params.tokenOffset || 0
+        const charOffset = tokenOffset * 4
+        const overlapChars = TOKEN_OVERLAP * 4
+
+        const startPos = Math.max(0, charOffset - overlapChars)
+        const maxChars = MAX_TOKENS_PER_RESPONSE * 4
+        const endPos = Math.min(fullJson.length, startPos + maxChars)
+
+        const chunk = fullJson.substring(startPos, endPos)
+        const hasMore = endPos < fullJson.length
+        const nextOffset = hasMore ? Math.ceil(endPos / 4) : null
+
+        let response
+        try {
+          response = JSON.parse(chunk)
+        } catch {
+          response = {
+            id: data.id,
+            historyId: data.historyId,
+            _chunkContent: chunk,
+            _note: "This is a partial response. The JSON was truncated mid-structure. Use tokenOffset parameter to fetch next chunk."
+          }
+        }
+
+        return formatResponse({
+          ...response,
+          _metadata: {
+            totalTokens,
+            truncated: true,
+            currentChunk: {
+              startToken: Math.ceil(startPos / 4),
+              endToken: Math.ceil(endPos / 4),
+              tokens: estimateTokens(chunk)
+            },
+            hasMore,
+            nextTokenOffset: nextOffset,
+            overlapTokens: tokenOffset > 0 ? TOKEN_OVERLAP : 0,
+            message: hasMore
+              ? `This thread is too large (${totalTokens} tokens). Showing tokens ${Math.ceil(startPos / 4)}-${Math.ceil(endPos / 4)}. Call again with tokenOffset: ${nextOffset} to fetch the next chunk.`
+              : `This is the final chunk of the thread (${totalTokens} tokens total).`
+          }
+        })
       })
     }
   )
 
   server.tool("list_threads",
-    "List threads in the user's mailbox",
+    "List threads in the user's mailbox. Returns only thread IDs and snippets (minimal token usage). For thread details, use 'list_messages' with threadId filter + 'get_message_summary' for individual messages. Avoid 'get_thread' on multiple threads as each can use 10,000-100,000+ tokens.",
     {
-      maxResults: z.number().optional().describe("Maximum number of threads to return"),
+      maxResults: z.number().optional().describe("Maximum number of threads to return. Recommended: Keep under 20 if you plan to fetch details."),
       pageToken: z.string().optional().describe("Page token to retrieve a specific page of results"),
       q: z.string().optional().describe("Only return threads matching the specified query"),
       labelIds: z.array(z.string()).optional().describe("Only return threads with labels that match all of the specified label IDs"),
