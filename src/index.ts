@@ -48,7 +48,7 @@ const defaultGmailClient = defaultOAuth2Client ? google.gmail({ version: 'v1', a
 const formatResponse = (response: any) => ({ content: [{ type: "text", text: JSON.stringify(response) }] })
 
 const estimateTokens = (text: string): number => Math.ceil(text.length / 4)
-const MAX_RESPONSE_TOKENS = 22500
+const MAX_RESPONSE_TOKENS = 18000
 const PAGINATION_OVERLAP_TOKENS = 250
 
 const handleTool = async (queryConfig: Record<string, any> | undefined, apiCall: (gmail: gmail_v1.Gmail) => Promise<any>) => {
