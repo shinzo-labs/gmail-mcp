@@ -47,6 +47,10 @@ const defaultGmailClient = defaultOAuth2Client ? google.gmail({ version: 'v1', a
 
 const formatResponse = (response: any) => ({ content: [{ type: "text", text: JSON.stringify(response) }] })
 
+const estimateTokens = (text: string): number => Math.ceil(text.length / 4)
+const MAX_RESPONSE_TOKENS = 18000
+const PAGINATION_OVERLAP_TOKENS = 250
+
 const handleTool = async (queryConfig: Record<string, any> | undefined, apiCall: (gmail: gmail_v1.Gmail) => Promise<any>) => {
   try {
     const oauth2Client = queryConfig ? createOAuth2Client(queryConfig) : defaultOAuth2Client
@@ -573,10 +577,11 @@ function createServer({ config }: { config?: Record<string, any> }) {
   )
 
   server.tool("get_message",
-    "Get a specific message by ID with format options",
+    "Get a specific message by ID with format options. Large messages are automatically paginated.",
     {
       id: z.string().describe("The ID of the message to retrieve"),
-      includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
+      includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large"),
+      pageToken: z.number().optional().describe("Page token for retrieving subsequent chunks of large messages")
     },
     async (params) => {
       return handleTool(config, async (gmail: gmail_v1.Gmail) => {
@@ -586,7 +591,106 @@ function createServer({ config }: { config?: Record<string, any> }) {
           data.payload = processMessagePart(data.payload, params.includeBodyHtml)
         }
 
-        return formatResponse(data)
+        const responseJson = JSON.stringify(data)
+        const totalTokens = estimateTokens(responseJson)
+
+        if (totalTokens <= MAX_RESPONSE_TOKENS) {
+          return formatResponse(data)
+        }
+
+        const offset = params.pageToken || 0
+        const overlapChars = PAGINATION_OVERLAP_TOKENS * 4
+        const startPos = Math.max(0, offset * 4 - overlapChars)
+        const endPos = Math.min(responseJson.length, startPos + MAX_RESPONSE_TOKENS * 4)
+        const chunk = responseJson.substring(startPos, endPos)
+
+        let response
+        try {
+          response = JSON.parse(chunk)
+        } catch {
+          response = { id: data.id, threadId: data.threadId, content: chunk }
+        }
+
+        if (endPos < responseJson.length) {
+          response.nextPageToken = Math.ceil(endPos / 4)
+        }
+
+        return formatResponse(response)
+      })
+    }
+  )
+
+  server.tool("get_message_summary",
+    "Get a message summary with essential fields only. Large summaries are automatically paginated.",
+    {
+      id: z.string().describe("The ID of the message to retrieve"),
+      pageToken: z.number().optional().describe("Page token for retrieving subsequent chunks of large summaries")
+    },
+    async (params) => {
+      return handleTool(config, async (gmail: gmail_v1.Gmail) => {
+        const { data } = await gmail.users.messages.get({ userId: 'me', id: params.id, format: 'full' })
+
+        const getBodyText = (part: MessagePart): string => {
+          if (part.mimeType === 'text/plain' && part.body?.data) {
+            return Buffer.from(part.body.data, 'base64').toString('utf-8')
+          }
+          if (part.parts) {
+            for (const subPart of part.parts) {
+              const text = getBodyText(subPart)
+              if (text) return text
+            }
+          }
+          return ''
+        }
+
+        const summary: any = {
+          id: data.id,
+          threadId: data.threadId,
+          labelIds: data.labelIds,
+          snippet: data.snippet,
+          internalDate: data.internalDate
+        }
+
+        if (data.payload?.headers) {
+          const headers: any = {}
+          const essentialHeaders = ['From', 'To', 'Cc', 'Bcc', 'Subject', 'Date']
+          for (const header of data.payload.headers) {
+            if (header.name && essentialHeaders.includes(header.name)) {
+              headers[header.name.toLowerCase()] = header.value
+            }
+          }
+          summary.headers = headers
+        }
+
+        if (data.payload) {
+          summary.body = getBodyText(data.payload)
+        }
+
+        const responseJson = JSON.stringify(summary)
+        const totalTokens = estimateTokens(responseJson)
+
+        if (totalTokens <= MAX_RESPONSE_TOKENS) {
+          return formatResponse(summary)
+        }
+
+        const offset = params.pageToken || 0
+        const overlapChars = PAGINATION_OVERLAP_TOKENS * 4
+        const startPos = Math.max(0, offset * 4 - overlapChars)
+        const endPos = Math.min(responseJson.length, startPos + MAX_RESPONSE_TOKENS * 4)
+        const chunk = responseJson.substring(startPos, endPos)
+
+        let response
+        try {
+          response = JSON.parse(chunk)
+        } catch {
+          response = { id: summary.id, content: chunk }
+        }
+
+        if (endPos < responseJson.length) {
+          response.nextPageToken = Math.ceil(endPos / 4)
+        }
+
+        return formatResponse(response)
       })
     }
   )
@@ -727,10 +831,11 @@ function createServer({ config }: { config?: Record<string, any> }) {
   )
 
   server.tool("get_thread",
-    "Get a specific thread by ID",
+    "Get a specific thread by ID. Large threads are automatically paginated.",
     {
       id: z.string().describe("The ID of the thread to retrieve"),
-      includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large")
+      includeBodyHtml: z.boolean().optional().describe("Whether to include the parsed HTML in the return for each body, excluded by default because they can be excessively large"),
+      pageToken: z.number().optional().describe("Page token for retrieving subsequent chunks of large threads")
     },
     async (params) => {
       return handleTool(config, async (gmail: gmail_v1.Gmail) => {
@@ -745,7 +850,31 @@ function createServer({ config }: { config?: Record<string, any> }) {
           })
         }
 
-        return formatResponse(data)
+        const responseJson = JSON.stringify(data)
+        const totalTokens = estimateTokens(responseJson)
+
+        if (totalTokens <= MAX_RESPONSE_TOKENS) {
+          return formatResponse(data)
+        }
+
+        const offset = params.pageToken || 0
+        const overlapChars = PAGINATION_OVERLAP_TOKENS * 4
+        const startPos = Math.max(0, offset * 4 - overlapChars)
+        const endPos = Math.min(responseJson.length, startPos + MAX_RESPONSE_TOKENS * 4)
+        const chunk = responseJson.substring(startPos, endPos)
+
+        let response
+        try {
+          response = JSON.parse(chunk)
+        } catch {
+          response = { id: data.id, historyId: data.historyId, content: chunk }
+        }
+
+        if (endPos < responseJson.length) {
+          response.nextPageToken = Math.ceil(endPos / 4)
+        }
+
+        return formatResponse(response)
       })
     }
   )
