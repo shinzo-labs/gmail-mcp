@@ -2,8 +2,8 @@
     <h1 align="center">Gmail MCP Server</h1>
     <p align=center>
         <a href="https://badge.fury.io/js/@shinzolabs%2Fgmail-mcp"><img src="https://badge.fury.io/js/@shinzolabs%2Fgmail-mcp.svg" alt="NPM Version"></a>
-        <a href="https://github.com/shinzo-labs/gmail-mcp/stargazers"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2Fshinzo-labs%2Fgmail-mcp%2Fstargazers&query=%24.length&logo=github&label=stars&color=e3b341" alt="Stars"></a>
-        <a href="https://github.com/shinzo-labs/gmail-mcp/forks"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2Fshinzo-labs%2Fgmail-mcp%2Fforks&query=%24.length&logo=github&label=forks&color=8957e5" alt="Forks"></a>
+        <a href="https://github.com/shinzo-labs/gmail-mcp/stargazers"><img src="https://img.shields.io/github/stars/shinzo-labs/gmail-mcp?style=flat&logo=github&color=e3b341" alt="Stars"></a>
+        <a href="https://github.com/shinzo-labs/gmail-mcp/forks"><img src="https://img.shields.io/github/forks/shinzo-labs/gmail-mcp?style=flat&logo=github&color=8957e5" alt="Forks"></a>
         <a href="https://smithery.ai/server/@shinzo-labs/gmail-mcp"><img src="https://smithery.ai/badge/@shinzo-labs/gmail-mcp" alt="Smithery Calls"></a>
         <a href="https://www.npmjs.com/package/@shinzolabs/gmail-mcp"><img src="https://img.shields.io/npm/dm/%40shinzolabs%2Fgmail-mcp" alt="NPM Downloads"></a>
 </div>
